@@ -1,26 +1,35 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const primary = '#3B82F6'; // A modern, friendly blue
+const secondary = '#F472B6'; // A soft, warm pink for accents
+const backgroundLight = '#F9FAFB'; // A very light gray for a soft background
+const backgroundDark = '#1F2937'; // A deep, cool gray for dark mode
+const textLight = '#111827'; // A dark gray for high contrast on light backgrounds
+const textDark = '#F9FAFB'; // A light gray for readability on dark backgrounds
+const cardLight = '#FFFFFF'; // White cards for a clean look
+const cardDark = '#374151'; // A slightly lighter gray for cards in dark mode
+const iconLight = '#6B7280';
+const iconDark = '#D1D5DB';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    primary,
+    secondary,
+    text: textLight,
+    background: backgroundLight,
+    card: cardLight,
+    icon: iconLight,
+    tint: primary,
+    tabIconDefault: '#ccc',
+    tabIconSelected: primary,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    primary,
+    secondary,
+    text: textDark,
+    background: backgroundDark,
+    card: cardDark,
+    icon: iconDark,
+    tint: primary,
+    tabIconDefault: '#ccc',
+    tabIconSelected: primary,
   },
 };
