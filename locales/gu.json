@@ -72,5 +72,17 @@
     "overpaid": "વધારાની ચુકવણી",
     "paid_properties": "ચૂકવેલ મિલકતો",
     "due_properties": "બાકી મિલકતો",
-    "overpaid_properties": "વધારાની ચુકવણીવાળી મિલકતો"
+    "overpaid_properties": "વધારાની ચુકવણીવાળી મિલકતો",
+    "total_collected": "કુલ એકત્રિત",
+    "no_collections": "આ મહિને કોઈ સંગ્રહ નથી.",
+    "monthly_collections": "માસિક સંગ્રહ",
+    "month": "મહિનો",
+    "months_plural": "મહિનાઓ",
+    "you_are_paying_for": "તમે આ માટે ચૂકવણી કરી રહ્યા છો",
+    "unmark_payment_confirm_title": "ચિહ્ન દૂર કરવાની પુષ્ટિ કરો",
+    "unmark_payment_confirm_message": "શું તમે ખરેખર આ ચુકવણીને અચિહ્નિત કરવા માંગો છો? આનાથી આ વર્ષની કોઈપણ અનુગામી ચુકવણીઓ પણ અચિહ્નિત થઈ જશે.",
+    "unmark": "અચિહ્નિત કરો",
+    "unmarking_not_allowed_title": "ક્રિયાની મંજૂરી નથી",
+    "unmarking_not_allowed_message": "તમારે ઉલટા કાલક્રમિક ક્રમમાં ચુકવણીઓ અચિહ્નિત કરવી આવશ્યક છે. કૃપા કરીને પહેલા પછીના મહિનાઓ અચિહ્નિત કરો.",
+    "ai_assistant": "AI સહાયક"
 }

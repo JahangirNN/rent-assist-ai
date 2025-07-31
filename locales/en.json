@@ -72,5 +72,17 @@
     "overpaid": "Overpaid",
     "paid_properties": "Paid Properties",
     "due_properties": "Due Properties",
-    "overpaid_properties": "Overpaid Properties"
+    "overpaid_properties": "Overpaid Properties",
+    "total_collected": "Total Collected",
+    "no_collections": "No collections this month.",
+    "monthly_collections": "Monthly Collections",
+    "month": "Month",
+    "months_plural": "Months",
+    "you_are_paying_for": "You are paying for",
+    "unmark_payment_confirm_title": "Confirm Unmarking",
+    "unmark_payment_confirm_message": "Are you sure you want to unmark this payment? This will also unmark any subsequent payments for this year.",
+    "unmark": "Unmark",
+    "unmarking_not_allowed_title": "Action Not Allowed",
+    "unmarking_not_allowed_message": "You must unmark payments in reverse chronological order. Please unmark later months first.",
+    "ai_assistant": "AI Assistant"
 }

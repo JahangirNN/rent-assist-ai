@@ -12,7 +12,6 @@ import { getLocale, t } from '@/locales/i18n';
 
 export default function ExploreScreen() {
   const [dashboardData, setDashboardData] = useState({
-    totalCollected: 0,
     overdueProperties: [],
   });
   const [loading, setLoading] = useState(true);
@@ -30,7 +29,7 @@ export default function ExploreScreen() {
     let firstOverdueDate;
     if (lastPaidMonthStr) {
         const [year, month] = lastPaidMonthStr.split('-').map(Number);
-        firstOverdueDate = new Date(year, month, 1); // JS month is 1-based from split, but constructor is 0-indexed. This gets us to the next month.
+        firstOverdueDate = new Date(year, month, 1);
     } else {
         firstOverdueDate = propertyStartDate;
     }
@@ -67,16 +66,10 @@ export default function ExploreScreen() {
       const storedGroups = await AsyncStorage.getItem('groups');
       const groups = storedGroups ? JSON.parse(storedGroups) : [];
       
-      let totalCollected = 0;
       let overdueProperties = [];
-      const currentMonthStr = new Date().toISOString().slice(0, 7);
 
       for (const group of groups) {
         for (const property of group.properties) {
-          if (property.payments.some(p => p.month === currentMonthStr)) {
-            totalCollected += property.rentAmount || 0;
-          }
-
           const { monthsDue, totalOverdueAmount, firstOverdueMonth } = getOverdueDetails(property);
           if (monthsDue > 0) {
             overdueProperties.push({ 
@@ -90,7 +83,7 @@ export default function ExploreScreen() {
         }
       }
 
-      setDashboardData({ totalCollected, overdueProperties });
+      setDashboardData({ overdueProperties });
     } catch (e) {
       console.error('Failed to load dashboard data.', e);
     } finally {
@@ -172,10 +165,6 @@ export default function ExploreScreen() {
   return (
     <ThemedView style={styles.container}>
         <ThemedText type="title" style={styles.title}>{t('dashboard')}</ThemedText>
-        <View style={[styles.summaryCard, {backgroundColor: cardColor}]}>
-            <ThemedText style={styles.summaryLabel}>{t('collected_this_month')}</ThemedText>
-            <ThemedText type="subtitle" style={styles.summaryValue}>₹{dashboardData.totalCollected.toFixed(2)}</ThemedText>
-        </View>
 
         <ThemedText type="subtitle" style={styles.listHeader}>{t('overdue_payments')}</ThemedText>
         <FlatList
@@ -208,26 +197,6 @@ const styles = StyleSheet.create({
     title: {
         marginBottom: 20,
         textAlign: 'center',
-    },
-    summaryCard: {
-        padding: 20,
-        borderRadius: 15,
-        alignItems: 'center',
-        marginBottom: 30,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    summaryLabel: {
-        color: '#6B7280',
-        marginBottom: 5,
-        fontSize: 16
-    },
-    summaryValue: {
-        fontWeight: 'bold',
-        fontSize: 24
     },
     listHeader: {
         marginBottom: 15,

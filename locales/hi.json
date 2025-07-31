@@ -72,5 +72,17 @@
     "overpaid": "अधिक भुगतान",
     "paid_properties": "भुगतान की गई संपत्तियाँ",
     "due_properties": "देय संपत्तियाँ",
-    "overpaid_properties": "अधिक भुगतान वाली संपत्तियाँ"
+    "overpaid_properties": "अधिक भुगतान वाली संपत्तियाँ",
+    "total_collected": "कुल एकत्रित",
+    "no_collections": "इस महीने कोई संग्रह नहीं।",
+    "monthly_collections": "मासिक संग्रह",
+    "month": "महीना",
+    "months_plural": "महीने",
+    "you_are_paying_for": "आप इसके लिए भुगतान कर रहे हैं",
+    "unmark_payment_confirm_title": "अचिह्नित करने की पुष्टि करें",
+    "unmark_payment_confirm_message": "क्या आप वाकई इस भुगतान को अचिह्नित करना चाहते हैं? यह इस वर्ष के किसी भी बाद के भुगतान को भी अचिह्नित कर देगा।",
+    "unmark": "अचिह्नित करें",
+    "unmarking_not_allowed_title": "कार्रवाई की अनुमति नहीं है",
+    "unmarking_not_allowed_message": "आपको उल्टे कालानुक्रमिक क्रम में भुगतानों को अचिह्नित करना होगा। कृपया पहले बाद के महीनों को अचिह्नित करें।",
+    "ai_assistant": "एआई सहायक"
 }
