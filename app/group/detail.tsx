@@ -276,7 +276,7 @@ export default function GroupDetailScreen() {
             ListEmptyComponent={<ThemedText style={styles.emptyText}>{t('no_properties')}</ThemedText>}
           />
           
-          {selectedProperty && (
+          {isPropertyModalVisible && (
             <PropertyModal
                 isVisible={isPropertyModalVisible}
                 onClose={() => {setIsPropertyModalVisible(false); setSelectedProperty(null);}}
