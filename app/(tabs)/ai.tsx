@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, Linking, AppState, TouchableOpacity, KeyboardAvoidingView, Platform, TextInput, Animated, SafeAreaView } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -22,8 +22,9 @@ if (API_KEY === 'YOUR_GEMINI_API_KEY' && process.env.NODE_ENV !== 'test') {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY);
+const CHAT_HISTORY_KEY = 'chatHistory';
 
-const ChatHeader = ({ isMuted, onToggleMute }) => {
+const ChatHeader = memo(({ isMuted, onToggleMute }) => {
     const headerColor = useThemeColor({}, 'header');
     const textColor = useThemeColor({}, 'text');
 
@@ -35,9 +36,9 @@ const ChatHeader = ({ isMuted, onToggleMute }) => {
             </TouchableOpacity>
         </View>
     );
-};
+});
 
-const ChatBubble = ({ item, isUser, bubbleColor, textColor }) => {
+const ChatBubble = memo(({ item, isUser, bubbleColor, textColor }) => {
     const scaleAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -65,7 +66,7 @@ const ChatBubble = ({ item, isUser, bubbleColor, textColor }) => {
             </View>
         </Animated.View>
     );
-};
+});
 
 
 export default function AiAssistantScreen() {
@@ -77,6 +78,21 @@ export default function AiAssistantScreen() {
     const [isMuted, setIsMuted] = useState(false);
     const [textInput, setTextInput] = useState('');
     const appState = useRef(AppState.currentState);
+    const isMutedRef = useRef(isMuted);
+
+    useEffect(() => {
+        isMutedRef.current = isMuted;
+    }, [isMuted]);
+
+    useEffect(() => {
+        if (chatHistory.length > 1) { // Only save if there's more than the initial message
+            const dataToStore = {
+                history: chatHistory,
+                timestamp: new Date().toISOString(),
+            };
+            AsyncStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(dataToStore));
+        }
+    }, [chatHistory]);
 
     const primaryColor = useThemeColor({}, 'primary');
     const cardColor = useThemeColor({}, 'card');
@@ -100,17 +116,35 @@ export default function AiAssistantScreen() {
         return () => subscription.remove();
     }, [requestMicPermission]);
 
-    const loadPropertyData = async () => {
+    const loadDataAndChatHistory = async () => {
         try {
+            // Load property data
             const storedGroups = await AsyncStorage.getItem('groups');
             setPropertyData(storedGroups ? JSON.parse(storedGroups) : []);
-            setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
+
+            // Load and validate chat history
+            const storedChatData = await AsyncStorage.getItem(CHAT_HISTORY_KEY);
+            if (storedChatData) {
+                const { history, timestamp } = JSON.parse(storedChatData);
+                const oneHour = 15 * 60 * 1000;
+                const chatAge = new Date().getTime() - new Date(timestamp).getTime();
+
+                if (chatAge < oneHour) {
+                    setChatHistory(history);
+                } else {
+                    await AsyncStorage.removeItem(CHAT_HISTORY_KEY);
+                    setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
+                }
+            } else {
+                setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
+            }
         } catch (e) {
-            Alert.alert("Error", "Failed to load property data.");
+            Alert.alert("Error", "Failed to load data.");
+            setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
         }
     };
 
-    useFocusEffect(useCallback(() => { loadPropertyData(); }, []));
+    useFocusEffect(useCallback(() => { loadDataAndChatHistory(); }, []));
 
     async function startRecording() {
         if (!hasPermission) {
@@ -165,12 +199,20 @@ export default function AiAssistantScreen() {
         setStatus('thinking');
         const thinkingMessage = { type: 'ai', text: '...', isLoading: true, timestamp: new Date() };
         setChatHistory(prev => [...prev, thinkingMessage]);
-
         try {
             const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
             const today = new Date().toLocaleDateString('en-CA');
+            const formattedHistory = chatHistory
+            .filter(item => !item.isLoading)
+            .map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+            .join('\n');
+            
+            console.log(formattedHistory)
             const prompt = `
                 You are a specialized AI assistant for a property manager.
+
+                ### PREVIOUS CONVERSATION HISTORY ###
+                ${formattedHistory}
 
                 ### 📜 PRIMARY DIRECTIVE: SCRIPT AND FORMATTING 📜 ###
                 Your two most important rules are:
@@ -234,7 +276,7 @@ export default function AiAssistantScreen() {
             
             const responseText = result.response.text();
             
-            if (!isMuted) {
+            if (!isMutedRef.current) {
                 Speech.speak(responseText, { language: 'hi-IN', pitch: 1.0, rate: 0.9 });
             }
             
@@ -253,16 +295,20 @@ export default function AiAssistantScreen() {
         }
     };
 
-    const renderChatItem = ({ item }) => {
+    const onToggleMute = useCallback(() => {
+        setIsMuted(prev => !prev);
+    }, []);
+
+    const renderChatItem = useCallback(({ item }) => {
         const isUser = item.type === 'user';
         const bubbleColor = isUser ? primaryColor : cardColor;
         return <ChatBubble item={item} isUser={isUser} bubbleColor={bubbleColor} textColor={textColor} />;
-    };
+    }, [primaryColor, cardColor, textColor]);
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: backgroundColor }}>
             <ThemedView style={styles.container}>
-                <ChatHeader isMuted={isMuted} onToggleMute={() => setIsMuted(!isMuted)} />
+                <ChatHeader isMuted={isMuted} onToggleMute={onToggleMute} />
                  <KeyboardAvoidingView 
                     style={{flex:1}}
                     behavior={Platform.OS === "ios" ? "padding" : "height"} 
