@@ -1,60 +1,66 @@
-import { View, TextInput, FlatList, StyleSheet, TouchableOpacity, Alert, Keyboard, Pressable, Platform } from 'react-native';
+import { View, TextInput, FlatList, StyleSheet, TouchableOpacity, Alert, Keyboard, Pressable, Platform, ActivityIndicator } from 'react-native';
 import React, { useState, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
+import { db } from '@/firebase/config';
 
 export default function HomeScreen() {
   const [groups, setGroups] = useState([]);
   const [groupName, setGroupName] = useState('');
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const cardColor = useThemeColor({}, 'card');
   const textColor = useThemeColor({}, 'text');
   const iconColor = useThemeColor({}, 'icon');
 
-  const loadGroups = async () => {
-    try {
-      const storedGroups = await AsyncStorage.getItem('groups');
-      setGroups(storedGroups ? JSON.parse(storedGroups) : []);
-    } catch (e) {
-      if (Platform.OS !== 'web') {
-        Alert.alert('Error', 'Failed to load locations.');
-      } else {
-        console.error('Failed to load locations.', e);
-      }
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
-      loadGroups();
+      const docRef = doc(db, "rentaData", "userProfile");
+      const unsubscribe = onSnapshot(docRef, (doc) => {
+        if (doc.exists()) {
+          setGroups(doc.data().locations || []);
+        } else {
+          setGroups([]);
+        }
+        setLoading(false);
+      }, (error) => {
+        Alert.alert('Error', 'Failed to load locations.');
+        setLoading(false);
+      });
+      return () => unsubscribe();
     }, [])
   );
 
   const saveGroups = async (newGroups) => {
     try {
-      await AsyncStorage.setItem('groups', JSON.stringify(newGroups));
-      setGroups(newGroups);
+      const docRef = doc(db, "rentaData", "userProfile");
+      await setDoc(docRef, { locations: newGroups }, { merge: true });
     } catch (e) {
-      if (Platform.OS !== 'web') {
-        Alert.alert('Error', 'Failed to save locations.');
-      } else {
-        console.error('Failed to save locations.', e);
-      }
+      Alert.alert('Error', 'Failed to save locations.');
     }
   };
 
-  const addGroup = () => {
+  const addGroup = async () => {
     if (groupName.trim() === '') return;
     const newGroup = { id: Date.now().toString(), name: groupName, properties: [] };
-    saveGroups([...groups, newGroup]);
-    setGroupName('');
-    Keyboard.dismiss();
+    
+    try {
+        const docRef = doc(db, "rentaData", "userProfile");
+        const docSnap = await getDoc(docRef);
+        const existingLocations = docSnap.exists() ? docSnap.data().locations || [] : [];
+        const updatedLocations = [...existingLocations, newGroup];
+        await setDoc(docRef, { locations: updatedLocations }, { merge: true });
+        setGroupName('');
+        Keyboard.dismiss();
+    } catch (error) {
+        Alert.alert('Error', 'Failed to add location.');
+    }
   };
 
   const deleteGroup = (groupId) => {
@@ -93,7 +99,15 @@ export default function HomeScreen() {
         </ThemedText>
       </View>
     </Pressable>
-  ), [cardColor, iconColor, router, t]);
+  ), [cardColor, iconColor, router, t, groups]);
+
+  if (loading) {
+    return (
+      <ThemedView style={styles.centered}>
+        <ActivityIndicator size="large" />
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -129,6 +143,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 70,
     paddingHorizontal: 20,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     marginBottom: 30,

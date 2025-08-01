@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, Modal, Pressable, TouchableOpacity, FlatList, ActivityIndicator, Text } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -6,61 +6,78 @@ import { setLocale, t } from '@/locales/i18n';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors } from '@/constants/Colors';
 import { useRouter, useFocusEffect } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/firebase/config';
+
+// A simple, stateless progress bar component for visualization
+const ProgressBar = ({ progress, color }) => (
+    <View style={styles.progressBarContainer}>
+        <View style={[styles.progressBar, { width: `${progress}%`, backgroundColor: color }]} />
+    </View>
+);
 
 export default function SettingsScreen() {
     const [modalVisible, setModalVisible] = useState(false);
+    const [locations, setLocations] = useState([]);
+    const [loading, setLoading] = useState(true);
     const colorScheme = useColorScheme();
     const router = useRouter();
     const cardColor = useThemeColor({}, 'card');
     const mutedColor = useThemeColor({ light: '#F9FAFB', dark: '#374151' });
     const primaryColor = useThemeColor({}, 'primary');
-    
-    const [dashboardData, setDashboardData] = useState({
-        totalCollected: 0,
-        groups: [],
-    });
-    const [loading, setLoading] = useState(true);
-
-    const loadDashboardData = async () => {
-        setLoading(true);
-        try {
-            const storedGroups = await AsyncStorage.getItem('groups');
-            const groups = storedGroups ? JSON.parse(storedGroups) : [];
-            
-            let totalCollected = 0;
-            const currentMonthStr = new Date().toISOString().slice(0, 7);
-            
-            const processedGroups = groups.map(group => {
-                let groupTotal = 0;
-                const propertiesWithCollection = group.properties.map(property => {
-                    let propertyCollected = 0;
-                    if (property.payments.some(p => p.month === currentMonthStr)) {
-                        propertyCollected = property.rentAmount || 0;
-                        totalCollected += propertyCollected;
-                        groupTotal += propertyCollected;
-                    }
-                    return { ...property, collectedAmount: propertyCollected };
-                }).filter(p => p.collectedAmount > 0);
-
-                return { ...group, properties: propertiesWithCollection, groupTotal };
-            }).filter(g => g.groupTotal > 0);
-
-            setDashboardData({ totalCollected, groups: processedGroups });
-        } catch (e) {
-            console.error('Failed to load dashboard data.', e);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const successColor = useThemeColor({ light: '#10B981', dark: '#34D399'});
+    const warningColor = useThemeColor({ light: '#F59E0B', dark: '#FBBF24'});
 
     useFocusEffect(
         useCallback(() => {
-            loadDashboardData();
+            setLoading(true);
+            const docRef = doc(db, "rentaData", "userProfile");
+            const unsubscribe = onSnapshot(docRef, (doc) => {
+                if (doc.exists()) {
+                    setLocations(doc.data().locations || []);
+                } else {
+                    setLocations([]);
+                }
+                setLoading(false);
+            }, (error) => {
+                console.error('Failed to load settings data.', error);
+                setLoading(false);
+            });
+
+            return () => unsubscribe();
         }, [])
     );
+
+    const financialSummary = useMemo(() => {
+        let totalPotential = 0;
+        let totalCollected = 0;
+        const currentMonthStr = new Date().toISOString().slice(0, 7);
+        
+        const groupsWithCollections = locations.map(group => {
+            let groupTotalCollected = 0;
+            const propertiesWithCollection = group.properties.map(property => {
+                const rentAmount = property.rentAmount || 0;
+                totalPotential += rentAmount;
+                
+                let propertyCollected = 0;
+                if (property.payments && property.payments.some(p => p.month === currentMonthStr)) {
+                    propertyCollected = rentAmount;
+                    totalCollected += rentAmount;
+                    groupTotalCollected += rentAmount;
+                }
+                return { ...property, collectedAmount: propertyCollected };
+            }).filter(p => p.collectedAmount > 0);
+
+            return { ...group, properties: propertiesWithCollection, groupTotal: groupTotalCollected };
+        }).filter(g => g.groupTotal > 0);
+
+        const totalPending = totalPotential - totalCollected;
+        const collectionRate = totalPotential > 0 ? (totalCollected / totalPotential) * 100 : 0;
+
+        return { totalPotential, totalCollected, totalPending, collectionRate, groups: groupsWithCollections };
+    }, [locations]);
 
     const languages = [
         { code: 'en', name: 'English' },
@@ -77,14 +94,14 @@ export default function SettingsScreen() {
 
     const currentLanguageName = languages.find(lang => lang.code === (t('language') === 'Language' ? 'en' : t('language') === 'ભાષા' ? 'gu' : 'hi'))?.name || 'English';
 
-    const renderProperty = ({ item }) => (
+    const renderProperty = useCallback(({ item }) => (
         <View style={styles.propertyItem}>
             <ThemedText style={styles.propertyName}>{item.name}</ThemedText>
             <Text style={[styles.propertyAmount, { color: primaryColor }]}>₹{item.collectedAmount.toFixed(2)}</Text>
         </View>
-    );
+    ), [primaryColor]);
 
-    const renderGroup = ({ item }) => (
+    const renderGroup = useCallback(({ item }) => (
         <View style={[styles.groupCard, { backgroundColor: cardColor }]}>
             <View style={styles.groupHeader}>
                 <ThemedText type="subtitle" style={styles.groupName}>{item.name}</ThemedText>
@@ -97,8 +114,16 @@ export default function SettingsScreen() {
                 ItemSeparatorComponent={() => <View style={[styles.separator, {backgroundColor: mutedColor}]} />}
             />
         </View>
-    );
+    ), [cardColor, primaryColor, mutedColor, renderProperty]);
 
+    if (loading) {
+        return (
+            <ThemedView style={styles.centered}>
+                <ActivityIndicator size="large" />
+            </ThemedView>
+        );
+    }
+    
     return (
         <ThemedView style={styles.container}>
             <ThemedText type="title" style={styles.title}>{t('settings')}</ThemedText>
@@ -134,28 +159,45 @@ export default function SettingsScreen() {
             </Modal>
             
             <ThemedText type="title" style={styles.listHeader}>{t('monthly_collections')}</ThemedText>
-            {loading ? (
-                <ActivityIndicator size="large" color={primaryColor} style={{ marginTop: 20 }}/>
-            ) : (
-                <>
-                    <View style={[styles.summaryCard, {backgroundColor: primaryColor}]}>
-                        <ThemedText style={styles.summaryLabel}>{t('total_collected')}</ThemedText>
-                        <ThemedText type="subtitle" style={styles.summaryValue}>₹{dashboardData.totalCollected.toFixed(2)}</ThemedText>
+            
+            {/* --- Improved Financial Summary UI --- */}
+            <View style={[styles.summaryContainer, {backgroundColor: cardColor}]}>
+                <View style={styles.summaryHeader}>
+                    <ThemedText type="subtitle">{t('this_month_summary')}</ThemedText>
+                    <ThemedText style={{fontSize: 18, fontWeight: 'bold', color: primaryColor}}>{financialSummary.collectionRate.toFixed(0)}%</ThemedText>
+                </View>
+                <ProgressBar progress={financialSummary.collectionRate} color={primaryColor} />
+                <View style={styles.summaryMetrics}>
+                    <View style={styles.metricItem}>
+                        <ThemedText style={styles.metricValue}>₹{financialSummary.totalCollected.toFixed(2)}</ThemedText>
+                        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                           <View style={[styles.metricDot, {backgroundColor: successColor}]} />
+                           <ThemedText style={styles.metricLabel}>{t('total_collected')}</ThemedText>
+                        </View>
                     </View>
-                    <FlatList
-                        data={dashboardData.groups}
-                        renderItem={renderGroup}
-                        keyExtractor={(group) => group.id}
-                        contentContainerStyle={{ paddingBottom: 100 }}
-                        ListEmptyComponent={
-                            <View style={styles.emptyContainer}>
-                                <Ionicons name="information-circle-outline" size={40} color={Colors[colorScheme ?? 'light'].text} />
-                                <ThemedText style={{textAlign: 'center', marginTop: 10}}>{t('no_collections')}</ThemedText>
-                            </View>
-                        }
-                    />
-                </>
-            )}
+                     <View style={styles.metricItem}>
+                        <ThemedText style={styles.metricValue}>₹{financialSummary.totalPending.toFixed(2)}</ThemedText>
+                         <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                           <View style={[styles.metricDot, {backgroundColor: warningColor}]} />
+                           <ThemedText style={styles.metricLabel}>{t('pending')}</ThemedText>
+                        </View>
+                    </View>
+                </View>
+                 <ThemedText style={styles.potentialText}>{t('potential')}: ₹{financialSummary.totalPotential.toFixed(2)}</ThemedText>
+            </View>
+
+            <FlatList
+                data={financialSummary.groups}
+                renderItem={renderGroup}
+                keyExtractor={(group) => group.id}
+                contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Ionicons name="information-circle-outline" size={40} color={Colors[colorScheme ?? 'light'].text} />
+                        <ThemedText style={{textAlign: 'center', marginTop: 10}}>{t('no_collections_this_month')}</ThemedText>
+                    </View>
+                }
+            />
         </ThemedView>
     );
 }
@@ -166,6 +208,11 @@ const styles = StyleSheet.create({
         paddingTop: 50,
         paddingHorizontal: 20,
     },
+    centered: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     title: {
         textAlign: 'center',
         marginBottom: 20,
@@ -174,11 +221,6 @@ const styles = StyleSheet.create({
         padding: 20,
         borderRadius: 15,
         marginBottom: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
     },
     pickerButton: {
         padding: 15,
@@ -210,31 +252,65 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 15,
     },
-    summaryCard: {
+    // --- New Summary Styles ---
+    summaryContainer: {
         padding: 20,
         borderRadius: 15,
+        marginBottom: 15,
+    },
+    summaryHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 20,
+        marginBottom: 15,
     },
-    summaryLabel: {
-        color: 'white',
-        marginBottom: 5,
-        fontSize: 16
+    progressBarContainer: {
+        height: 8,
+        backgroundColor: '#E5E7EB',
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: 15,
     },
-    summaryValue: {
+    progressBar: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    summaryMetrics: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    metricItem: {
+        alignItems: 'flex-start',
+    },
+    metricValue: {
+        fontSize: 20,
         fontWeight: 'bold',
-        fontSize: 32,
-        color: 'white'
     },
+    metricLabel: {
+        fontSize: 14,
+        color: '#6B7280',
+    },
+    metricDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    potentialText: {
+        textAlign: 'center',
+        fontSize: 12,
+        color: '#9CA3AF',
+        borderTopWidth: 1,
+        borderColor: '#E5E7EB',
+        paddingTop: 10,
+        marginTop: 5,
+    },
+    // --- End New Summary Styles ---
     groupCard: {
         padding: 15,
         borderRadius: 15,
         marginBottom: 15,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
     },
     groupHeader: {
         flexDirection: 'row',

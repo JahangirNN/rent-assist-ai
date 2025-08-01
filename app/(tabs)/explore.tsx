@@ -1,19 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View, Pressable, Linking, Alert } from 'react-native';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { getLocale, t } from '@/locales/i18n';
+import { db } from '@/firebase/config';
 
 export default function ExploreScreen() {
-  const [dashboardData, setDashboardData] = useState({
-    overdueProperties: [],
-  });
+  const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const cardColor = useThemeColor({}, 'card');
   const mutedColor = useThemeColor({light: '#F3F4F6', dark: '#374151'});
@@ -60,42 +59,43 @@ export default function ExploreScreen() {
     };
   };
 
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      const storedGroups = await AsyncStorage.getItem('groups');
-      const groups = storedGroups ? JSON.parse(storedGroups) : [];
-      
-      let overdueProperties = [];
-
-      for (const group of groups) {
-        for (const property of group.properties) {
-          const { monthsDue, totalOverdueAmount, firstOverdueMonth } = getOverdueDetails(property);
-          if (monthsDue > 0) {
-            overdueProperties.push({ 
-              ...property, 
-              groupName: group.name,
-              monthsDue,
-              totalOverdueAmount,
-              firstOverdueMonth
-            });
-          }
-        }
-      }
-
-      setDashboardData({ overdueProperties });
-    } catch (e) {
-      console.error('Failed to load dashboard data.', e);
-    } finally {
-        setLoading(false);
-    }
-  };
-
   useFocusEffect(
     useCallback(() => {
-      loadDashboardData();
+      setLoading(true);
+      const docRef = doc(db, "rentaData", "userProfile");
+      const unsubscribe = onSnapshot(docRef, (doc) => {
+          if (doc.exists()) {
+              setLocations(doc.data().locations || []);
+          } else {
+              setLocations([]);
+          }
+          setLoading(false);
+      }, (error) => {
+          console.error('Failed to load dashboard data.', error);
+          setLoading(false);
+      });
+      return () => unsubscribe();
     }, [])
   );
+
+  const overdueProperties = useMemo(() => {
+    let overdue = [];
+    locations.forEach(group => {
+      group.properties.forEach(property => {
+        const { monthsDue, totalOverdueAmount, firstOverdueMonth } = getOverdueDetails(property);
+        if (monthsDue > 0) {
+          overdue.push({ 
+            ...property, 
+            groupName: group.name,
+            monthsDue,
+            totalOverdueAmount,
+            firstOverdueMonth
+          });
+        }
+      });
+    });
+    return overdue;
+  }, [locations]);
 
   const handleCall = (mobileNumber) => {
     const phoneNumber = `tel:+91${mobileNumber}`;
@@ -111,7 +111,7 @@ export default function ExploreScreen() {
   };
 
 
-  const renderOverdueTenant = ({ item }) => {
+  const renderOverdueTenant = useCallback(({ item }) => {
     return (<View style={[styles.itemCard, { backgroundColor: cardColor }]}>
         <View style={styles.itemHeader}>
             <View style={styles.propertyInfo}>
@@ -152,12 +152,12 @@ export default function ExploreScreen() {
             </Pressable>
         )}
     </View>
-  )};
+  )}, [cardColor, mutedColor, primaryColor, t]);
 
   if (loading) {
     return (
       <ThemedView style={styles.centered}>
-        <ActivityIndicator size="large" color={Colors.light.primary} />
+        <ActivityIndicator size="large" />
       </ThemedView>
     );
   }
@@ -168,7 +168,7 @@ export default function ExploreScreen() {
 
         <ThemedText type="subtitle" style={styles.listHeader}>{t('overdue_payments')}</ThemedText>
         <FlatList
-          data={dashboardData.overdueProperties}
+          data={overdueProperties}
           renderItem={renderOverdueTenant}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 120 }}

@@ -1,21 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, Linking, AppState, TouchableOpacity, KeyboardAvoidingView, Platform, TextInput, Animated, SafeAreaView } from 'react-native';
-import { ThemedView } from '@/components/ThemedView';
-import { ThemedText } from '@/components/ThemedText';
-import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
-import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useFocusEffect } from 'expo-router';
-import { useThemeColor } from '@/hooks/useThemeColor';
-import { t } from '@/locales/i18n';
+import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// --- IMPORTANT: DO NOT USE IN PRODUCTION! ---
+import { ThemedView } from '@/components/ThemedView';
+import { ThemedText } from '@/components/ThemedText';
+import { Ionicons } from '@expo/vector-icons';
+import { useThemeColor } from '@/hooks/useThemeColor';
+import { t } from '@/locales/i18n';
+import { db } from '@/firebase/config';
+
+// --- SECURITY WARNING: For production apps, use a secure secrets management solution ---
+// It is strongly recommended to load this key from a secure environment variable
+// or a cloud-based secrets manager instead of hardcoding it in the source file.
 const API_KEY = "AIzaSyBnynLbX-Z2STQ0Rzz4aazrTbt5a0SKQJU";
-// ---------------------------------------------------
 
 if (API_KEY === 'YOUR_GEMINI_API_KEY' && process.env.NODE_ENV !== 'test') {
     Alert.alert("API Key Needed", "Please replace 'YOUR_GEMINI_API_KEY' in app/(tabs)/ai.tsx with your actual Gemini API key.");
@@ -23,6 +27,7 @@ if (API_KEY === 'YOUR_GEMINI_API_KEY' && process.env.NODE_ENV !== 'test') {
 
 const genAI = new GoogleGenerativeAI(API_KEY);
 const CHAT_HISTORY_KEY = 'chatHistory';
+
 
 const ChatHeader = memo(({ isMuted, onToggleMute }) => {
     const headerColor = useThemeColor({}, 'header');
@@ -70,9 +75,9 @@ const ChatBubble = memo(({ item, isUser, bubbleColor, textColor }) => {
 
 
 export default function AiAssistantScreen() {
-    const [status, setStatus] = useState('idle'); // 'idle', 'recording', 'thinking', 'no_permission'
+    const [status, setStatus] = useState('idle');
     const [chatHistory, setChatHistory] = useState([]);
-    const [propertyData, setPropertyData] = useState(null);
+    const [propertyData, setPropertyData] = useState({ locations: [] });
     const [hasPermission, setHasPermission] = useState(false);
     const [recording, setRecording] = useState();
     const [isMuted, setIsMuted] = useState(false);
@@ -85,7 +90,7 @@ export default function AiAssistantScreen() {
     }, [isMuted]);
 
     useEffect(() => {
-        if (chatHistory.length > 1) { // Only save if there's more than the initial message
+        if (chatHistory.length > 1) {
             const dataToStore = {
                 history: chatHistory,
                 timestamp: new Date().toISOString(),
@@ -117,16 +122,24 @@ export default function AiAssistantScreen() {
     }, [requestMicPermission]);
 
     const loadDataAndChatHistory = async () => {
-        try {
-            // Load property data
-            const storedGroups = await AsyncStorage.getItem('groups');
-            setPropertyData(storedGroups ? JSON.parse(storedGroups) : []);
+        const docRef = doc(db, "rentaData", "userProfile");
+        const unsubscribe = onSnapshot(docRef, async (doc) => {
+            if (doc.exists()) {
+                setPropertyData(doc.data());
+            } else {
+                const defaultData = { locations: [] };
+                await setDoc(docRef, defaultData);
+                setPropertyData(defaultData);
+            }
+        }, (error) => {
+            Alert.alert("Error", "Failed to load data from Firestore.");
+        });
 
-            // Load and validate chat history
+        try {
             const storedChatData = await AsyncStorage.getItem(CHAT_HISTORY_KEY);
             if (storedChatData) {
                 const { history, timestamp } = JSON.parse(storedChatData);
-                const oneHour = 15 * 60 * 1000;
+                const oneHour = 60 * 60 * 1000;
                 const chatAge = new Date().getTime() - new Date(timestamp).getTime();
 
                 if (chatAge < oneHour) {
@@ -139,12 +152,19 @@ export default function AiAssistantScreen() {
                 setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
             }
         } catch (e) {
-            Alert.alert("Error", "Failed to load data.");
+            Alert.alert("Error", "Failed to load chat history.");
             setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
         }
+        
+        return unsubscribe;
     };
 
-    useFocusEffect(useCallback(() => { loadDataAndChatHistory(); }, []));
+    useFocusEffect(useCallback(() => {
+        const unsubscribePromise = loadDataAndChatHistory();
+        return () => {
+            unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
+        };
+    }, []));
 
     async function startRecording() {
         if (!hasPermission) {
@@ -207,7 +227,6 @@ export default function AiAssistantScreen() {
             .map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
             .join('\n');
             
-            console.log(formattedHistory)
             const prompt = `
                 You are a specialized AI assistant for a property manager.
 
