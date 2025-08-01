@@ -5,7 +5,6 @@
     "properties": "संपत्तियां",
     "property": "संपत्ति",
     "dashboard": "डैशबोर्ड",
-    "collected_this_month": "कुल एकत्रित (इस महीने)",
     "overdue_payments": "बकाया भुगतान",
     "no_overdue": "कोई अतिदेय भुगतान नहीं मिला!",
     "manage_payments": "भुगतान प्रबंधित करें",
@@ -73,8 +72,6 @@
     "paid_properties": "भुगतान की गई संपत्तियाँ",
     "due_properties": "देय संपत्तियाँ",
     "overpaid_properties": "अधिक भुगतान वाली संपत्तियाँ",
-    "total_collected": "कुल एकत्रित",
-    "no_collections": "इस महीने कोई संग्रह नहीं।",
     "monthly_collections": "मासिक संग्रह",
     "month": "महीना",
     "months_plural": "महीने",
@@ -86,5 +83,11 @@
     "unmarking_not_allowed_message": "आपको उल्टे कालानुक्रमिक क्रम में भुगतानों को अचिह्नित करना होगा। कृपया पहले बाद के महीनों को अचिह्नित करें।",
     "ai_assistant": "एआई सहायक",
     "type_a_message": "संदेश लिखें...",
-    "hold_to_speak_or_type": "बोलने के लिए दबाए रखें या संदेश लिखें"
+    "hold_to_speak_or_type": "बोलने के लिए दबाए रखें या संदेश लिखें",
+    "this_month_summary": "इस महीने का सारांश",
+    "total_collected": "एकत्रित",
+    "total_pending": "बकाया",
+    "total_potential": "संभावित",
+    "no_collections_this_month": "इस महीने कोई संग्रह दर्ज नहीं किया गया है।",
+    "potential": "Expected"
 }

@@ -11,13 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
 
-// A simple, stateless progress bar component for visualization
-const ProgressBar = ({ progress, color }) => (
-    <View style={styles.progressBarContainer}>
-        <View style={[styles.progressBar, { width: `${progress}%`, backgroundColor: color }]} />
-    </View>
-);
-
 export default function SettingsScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [locations, setLocations] = useState([]);
@@ -28,7 +21,7 @@ export default function SettingsScreen() {
     const mutedColor = useThemeColor({ light: '#F9FAFB', dark: '#374151' });
     const primaryColor = useThemeColor({}, 'primary');
     const successColor = useThemeColor({ light: '#10B981', dark: '#34D399'});
-    const warningColor = useThemeColor({ light: '#F59E0B', dark: '#FBBF24'});
+    const dangerColor = useThemeColor({light: '#EF4444', dark: '#F87171'});
 
     useFocusEffect(
         useCallback(() => {
@@ -128,14 +121,16 @@ export default function SettingsScreen() {
         <ThemedView style={styles.container}>
             <ThemedText type="title" style={styles.title}>{t('settings')}</ThemedText>
             
+            {/* Language Selection Card */}
             <View style={[styles.card, { backgroundColor: cardColor }]}>
-                <ThemedText type="subtitle">{t('language')}</ThemedText>
+                <ThemedText type="subtitle" style={styles.cardTitle}>{t('language')}</ThemedText>
                 <Pressable style={[styles.pickerButton, { backgroundColor: mutedColor }]} onPress={() => setModalVisible(true)}>
-                    <ThemedText>{currentLanguageName}</ThemedText>
+                    <ThemedText style={styles.pickerButtonText}>{currentLanguageName}</ThemedText>
                     <Ionicons name="chevron-down-outline" size={20} color={Colors[colorScheme ?? 'light'].text} />
                 </Pressable>
             </View>
 
+            {/* Language Selection Modal */}
             <Modal
                 transparent={true}
                 animationType="slide"
@@ -151,39 +146,33 @@ export default function SettingsScreen() {
                                 style={[styles.languageOption, {borderBottomColor: mutedColor}]} 
                                 onPress={() => handleLanguageChange(lang.code)}
                             >
-                                <ThemedText>{lang.name}</ThemedText>
+                                <ThemedText style={styles.languageOptionText}>{lang.name}</ThemedText>
                             </TouchableOpacity>
                         ))}
                     </ThemedView>
                 </Pressable>
             </Modal>
             
-            <ThemedText type="title" style={styles.listHeader}>{t('monthly_collections')}</ThemedText>
+            {/* Monthly Collections Summary */}
+            <ThemedText type="subtitle" style={styles.sectionHeader}>{t('monthly_collections')}</ThemedText>
             
-            {/* --- Improved Financial Summary UI --- */}
-            <View style={[styles.summaryContainer, {backgroundColor: cardColor}]}>
-                <View style={styles.summaryHeader}>
-                    <ThemedText type="subtitle">{t('this_month_summary')}</ThemedText>
-                    <ThemedText style={{fontSize: 18, fontWeight: 'bold', color: primaryColor}}>{financialSummary.collectionRate.toFixed(0)}%</ThemedText>
+            <View style={[styles.summaryCard, {backgroundColor: cardColor}]}>
+                <ThemedText type="title" style={styles.summaryTitle}>{t('this_month_summary')}</ThemedText>
+                
+                <View style={[styles.summaryMetricRow, {borderColor: mutedColor}]}>
+                    <ThemedText style={styles.summaryMetricLabel}>{t('total_potential')}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: primaryColor}]}>₹{financialSummary.totalPotential.toFixed(2)}</ThemedText>
                 </View>
-                <ProgressBar progress={financialSummary.collectionRate} color={primaryColor} />
-                <View style={styles.summaryMetrics}>
-                    <View style={styles.metricItem}>
-                        <ThemedText style={styles.metricValue}>₹{financialSummary.totalCollected.toFixed(2)}</ThemedText>
-                        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                           <View style={[styles.metricDot, {backgroundColor: successColor}]} />
-                           <ThemedText style={styles.metricLabel}>{t('total_collected')}</ThemedText>
-                        </View>
-                    </View>
-                     <View style={styles.metricItem}>
-                        <ThemedText style={styles.metricValue}>₹{financialSummary.totalPending.toFixed(2)}</ThemedText>
-                         <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                           <View style={[styles.metricDot, {backgroundColor: warningColor}]} />
-                           <ThemedText style={styles.metricLabel}>{t('pending')}</ThemedText>
-                        </View>
-                    </View>
+
+                <View style={[styles.summaryMetricRow, {borderColor: mutedColor}]}>
+                    <ThemedText style={styles.summaryMetricLabel}>{t('total_collected')}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: successColor}]}>₹{financialSummary.totalCollected.toFixed(2)}</ThemedText>
                 </View>
-                 <ThemedText style={styles.potentialText}>{t('potential')}: ₹{financialSummary.totalPotential.toFixed(2)}</ThemedText>
+
+                <View style={[styles.summaryMetricRow, {borderBottomWidth: 0}]}> 
+                    <ThemedText style={styles.summaryMetricLabel}>{t('total_pending')}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: dangerColor}]}>₹{financialSummary.totalPending.toFixed(2)}</ThemedText>
+                </View>
             </View>
 
             <FlatList
@@ -221,6 +210,16 @@ const styles = StyleSheet.create({
         padding: 20,
         borderRadius: 15,
         marginBottom: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    cardTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 10,
     },
     pickerButton: {
         padding: 15,
@@ -229,6 +228,9 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
+    },
+    pickerButtonText: {
+        fontSize: 16,
     },
     modalOverlay: {
         flex: 1,
@@ -248,81 +250,74 @@ const styles = StyleSheet.create({
         paddingVertical: 15,
         borderBottomWidth: 1,
     },
-    listHeader: {
+    languageOptionText: {
+        fontSize: 16,
+    },
+    sectionHeader: {
+        fontSize: 20,
+        fontWeight: 'bold',
         textAlign: 'center',
         marginBottom: 15,
+        marginTop: 10,
     },
-    // --- New Summary Styles ---
-    summaryContainer: {
+    // --- Refined Summary Card Styles ---
+    summaryCard: {
         padding: 20,
         borderRadius: 15,
-        marginBottom: 15,
+        marginBottom: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
-    summaryHeader: {
+    summaryTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 15,
+        textAlign: 'center',
+    },
+    summaryMetricRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 15,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
     },
-    progressBarContainer: {
-        height: 8,
-        backgroundColor: '#E5E7EB',
-        borderRadius: 4,
-        overflow: 'hidden',
-        marginBottom: 15,
-    },
-    progressBar: {
-        height: '100%',
-        borderRadius: 4,
-    },
-    summaryMetrics: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 10,
-    },
-    metricItem: {
-        alignItems: 'flex-start',
-    },
-    metricValue: {
-        fontSize: 20,
-        fontWeight: 'bold',
-    },
-    metricLabel: {
-        fontSize: 14,
+    summaryMetricLabel: {
+        fontSize: 16,
         color: '#6B7280',
     },
-    metricDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        marginRight: 6,
+    summaryMetricValue: {
+        fontSize: 18,
+        fontWeight: 'bold',
     },
-    potentialText: {
-        textAlign: 'center',
-        fontSize: 12,
-        color: '#9CA3AF',
-        borderTopWidth: 1,
-        borderColor: '#E5E7EB',
-        paddingTop: 10,
-        marginTop: 5,
-    },
-    // --- End New Summary Styles ---
+    // --- End Refined Summary Card Styles ---
     groupCard: {
         padding: 15,
         borderRadius: 15,
         marginBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
     },
     groupHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         paddingBottom: 10,
         marginBottom: 10,
+        borderBottomWidth: 1,
+        borderColor: '#E5E7EB',
     },
     groupName: {
         fontWeight: 'bold',
+        fontSize: 18,
     },
     groupTotal: {
         fontWeight: 'bold',
+        fontSize: 18,
     },
     propertyItem: {
         flexDirection: 'row',
@@ -344,5 +339,5 @@ const styles = StyleSheet.create({
         marginTop: 40,
         alignItems: 'center',
         justifyContent: 'center'
-    }
+    },
 });

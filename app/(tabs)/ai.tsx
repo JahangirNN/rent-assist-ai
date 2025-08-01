@@ -16,16 +16,6 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
 import { db } from '@/firebase/config';
 
-// --- SECURITY WARNING: For production apps, use a secure secrets management solution ---
-// It is strongly recommended to load this key from a secure environment variable
-// or a cloud-based secrets manager instead of hardcoding it in the source file.
-const API_KEY = "AIzaSyBnynLbX-Z2STQ0Rzz4aazrTbt5a0SKQJU";
-
-if (API_KEY === 'YOUR_GEMINI_API_KEY' && process.env.NODE_ENV !== 'test') {
-    Alert.alert("API Key Needed", "Please replace 'YOUR_GEMINI_API_KEY' in app/(tabs)/ai.tsx with your actual Gemini API key.");
-}
-
-const genAI = new GoogleGenerativeAI(API_KEY);
 const CHAT_HISTORY_KEY = 'chatHistory';
 
 
@@ -77,11 +67,12 @@ const ChatBubble = memo(({ item, isUser, bubbleColor, textColor }) => {
 export default function AiAssistantScreen() {
     const [status, setStatus] = useState('idle');
     const [chatHistory, setChatHistory] = useState([]);
-    const [propertyData, setPropertyData] = useState({ locations: [] });
+    const [propertyData, setPropertyData] = useState({ locations: [], api: '' });
     const [hasPermission, setHasPermission] = useState(false);
     const [recording, setRecording] = useState();
     const [isMuted, setIsMuted] = useState(false);
     const [textInput, setTextInput] = useState('');
+    const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null); // New state for API key
     const appState = useRef(AppState.currentState);
     const isMutedRef = useRef(isMuted);
 
@@ -125,11 +116,18 @@ export default function AiAssistantScreen() {
         const docRef = doc(db, "rentaData", "userProfile");
         const unsubscribe = onSnapshot(docRef, async (doc) => {
             if (doc.exists()) {
-                setPropertyData(doc.data());
+                const data = doc.data();
+                setPropertyData(data);
+                if (data.api) { // Check if API key exists in Firestore data
+                    setGeminiApiKey(data.api);
+                } else {
+                    Alert.alert("API Key Missing", "Please add the 'api' field to your userProfile document in Firestore.");
+                }
             } else {
-                const defaultData = { locations: [] };
+                const defaultData = { locations: [], api: '' }; // Ensure 'api' field is present even in default
                 await setDoc(docRef, defaultData);
                 setPropertyData(defaultData);
+                Alert.alert("API Key Missing", "Please add the 'api' field to your userProfile document in Firestore.");
             }
         }, (error) => {
             Alert.alert("Error", "Failed to load data from Firestore.");
@@ -173,7 +171,10 @@ export default function AiAssistantScreen() {
             );
             return;
         }
-        if (API_KEY === 'YOUR_GEMINI_API_KEY') return;
+        if (!geminiApiKey) { // Check if API key is loaded
+            Alert.alert("API Key Not Loaded", "Please ensure your API key is configured in Firestore.");
+            return;
+        }
         
         setStatus('recording');
         try {
@@ -216,10 +217,17 @@ export default function AiAssistantScreen() {
             return;
         }
 
+        if (!geminiApiKey) { // Ensure API key is available before making AI call
+            Alert.alert("API Key Missing", "Cannot send message: Gemini API key is not loaded.");
+            setStatus('idle');
+            return;
+        }
+
         setStatus('thinking');
         const thinkingMessage = { type: 'ai', text: '...', isLoading: true, timestamp: new Date() };
         setChatHistory(prev => [...prev, thinkingMessage]);
         try {
+            const genAI = new GoogleGenerativeAI(geminiApiKey); // Initialize here with the fetched key
             const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
             const today = new Date().toLocaleDateString('en-CA');
             const formattedHistory = chatHistory

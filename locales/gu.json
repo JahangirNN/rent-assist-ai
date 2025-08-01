@@ -5,7 +5,6 @@
     "properties": "મિલકતો",
     "property": "મિલકત",
     "dashboard": "ડેશબોર્ડ",
-    "collected_this_month": "કુલ એકત્રિત (આ મહિને)",
     "overdue_payments": "બાકી ચૂકવણી",
     "no_overdue": "કોઈ ચૂકવણી બાકી નથી!",
     "manage_payments": "ચૂકવણીઓનું સંચાલન કરો",
@@ -73,8 +72,6 @@
     "paid_properties": "ચૂકવેલ મિલકતો",
     "due_properties": "બાકી મિલકતો",
     "overpaid_properties": "વધારાની ચુકવણીવાળી મિલકતો",
-    "total_collected": "કુલ એકત્રિત",
-    "no_collections": "આ મહિને કોઈ સંગ્રહ નથી.",
     "monthly_collections": "માસિક સંગ્રહ",
     "month": "મહિનો",
     "months_plural": "મહિનાઓ",
@@ -86,5 +83,11 @@
     "unmarking_not_allowed_message": "તમારે ઉલટા કાલક્રમિક ક્રમમાં ચુકવણીઓ અચિહ્નિત કરવી આવશ્યક છે. કૃપા કરીને પહેલા પછીના મહિનાઓ અચિહ્નિત કરો.",
     "ai_assistant": "AI સહાયક",
     "type_a_message": "સંદેશ લખો...",
-    "hold_to_speak_or_type": "બોલવા માટે દબાવી રાખો અથવા સંદેશ લખો"
+    "hold_to_speak_or_type": "બોલવા માટે દબાવી રાખો અથવા સંદેશ લખો",
+    "this_month_summary": "આ મહિનાનો સારાંશ",
+    "total_collected": "એકત્રિત",
+    "total_pending": "બાકી",
+    "total_potential": "સંભવિત",
+    "no_collections_this_month": "આ મહિને કોઈ સંગ્રહ નોંધાયેલ નથી.",
+    "potential": "Expected"
 }

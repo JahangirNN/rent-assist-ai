@@ -5,7 +5,6 @@
     "properties": "properties",
     "property": "property",
     "dashboard": "Dashboard",
-    "collected_this_month": "Total Collected (This Month)",
     "overdue_payments": "Overdue Payments",
     "no_overdue": "No overdue payments found!",
     "manage_payments": "Manage Payments",
@@ -73,8 +72,6 @@
     "paid_properties": "Paid Properties",
     "due_properties": "Due Properties",
     "overpaid_properties": "Overpaid Properties",
-    "total_collected": "Total Collected",
-    "no_collections": "No collections this month.",
     "monthly_collections": "Monthly Collections",
     "month": "Month",
     "months_plural": "Months",
@@ -86,5 +83,11 @@
     "unmarking_not_allowed_message": "You must unmark payments in reverse chronological order. Please unmark later months first.",
     "ai_assistant": "AI Assistant",
     "type_a_message": "Type a message...",
-    "hold_to_speak_or_type": "Hold to Speak or type a message"
+    "hold_to_speak_or_type": "Hold to Speak or type a message",
+    "this_month_summary": "This Month's Summary",
+    "total_collected": "Collected",
+    "total_pending": "Pending",
+    "total_potential": "Potential",
+    "no_collections_this_month": "No collections recorded this month.",
+    "potential": "Expected"
 }
