@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Modal, View, StyleSheet, Pressable, FlatList, TouchableOpacity, Text, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from './ThemedText';
@@ -84,7 +84,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
 
     const newPaymentsCount = Array.from(tempPayments).filter(p => !payments.has(p)).length;
 
-    const renderMonth = ({ item }) => {
+    const renderMonth = useCallback(({ item }) => {
         const isOriginallyPaid = payments.has(item.id);
         const isCurrentlySelected = tempPayments.has(item.id);
         
@@ -119,7 +119,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
                 <Text style={[styles.monthText, textStyle]}>{item.name}</Text>
             </TouchableOpacity>
         );
-    };
+    }, [payments, tempPayments, textColor, mutedColor, successColor, paidBackgroundColor, primaryColor, disabledTextColor, handleMonthPress]);
 
     return (
         <Modal visible={isVisible} animationType="slide" transparent onRequestClose={onClose}>

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import { Alert, SectionList, Pressable, StyleSheet, TouchableOpacity, View, Linking } from 'react-native';
 
 import PaymentHistoryModal from '@/components/PaymentHistoryModal';
@@ -157,7 +157,7 @@ export default function GroupDetailScreen() {
         setIsPaymentModalVisible(true);
     };
 
-    const renderProperty = ({ item }) => {
+    const renderProperty = useCallback(({ item }) => {
         const status = getPaymentStatus(item);
         const overdueMonthsList = getOverdueMonths(item.payments || [], item.dueDate || 1);
         const overpaidMonthsList = getOverpaidMonths(item.payments || []);
@@ -252,7 +252,7 @@ export default function GroupDetailScreen() {
                 </Pressable>
             </View>
         );
-    };
+    }, [cardColor, primaryColor, iconColor, overdueChipColor, overdueChipTextColor, t]);
 
     return (
         <ThemedView style={styles.container}>

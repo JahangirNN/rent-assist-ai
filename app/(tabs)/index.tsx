@@ -79,7 +79,7 @@ export default function HomeScreen() {
     }
   }
 
-  const renderGroup = ({ item }) => (
+  const renderGroup = useCallback(({ item }) => (
     <Pressable onPress={() => router.push({ pathname: '/group/detail', params: { groupId: item.id }})}>
       <View style={[styles.groupCard, { backgroundColor: cardColor }]}>
         <View style={styles.cardHeader}>
@@ -93,7 +93,7 @@ export default function HomeScreen() {
         </ThemedText>
       </View>
     </Pressable>
-  );
+  ), [cardColor, iconColor, router, t]);
 
   return (
     <ThemedView style={styles.container}>

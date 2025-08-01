@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, Linking, AppState, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, Linking, AppState, TouchableOpacity, KeyboardAvoidingView, Platform, TextInput, Animated, SafeAreaView } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,6 @@ import { useFocusEffect } from 'expo-router';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
 import { LinearGradient } from 'expo-linear-gradient';
-
 
 // --- IMPORTANT: DO NOT USE IN PRODUCTION! ---
 const API_KEY = "AIzaSyBnynLbX-Z2STQ0Rzz4aazrTbt5a0SKQJU";
@@ -38,6 +37,37 @@ const ChatHeader = ({ isMuted, onToggleMute }) => {
     );
 };
 
+const ChatBubble = ({ item, isUser, bubbleColor, textColor }) => {
+    const scaleAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true
+        }).start();
+    }, [scaleAnim]);
+
+    const bubbleStyle = isUser ? styles.userBubble : styles.aiBubble;
+    const textStyle = isUser ? styles.userText : [styles.aiText, { color: textColor }];
+
+    return (
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            <View style={[styles.chatItem, isUser ? styles.userItem : styles.aiItem]}>
+                <View style={[styles.bubble, bubbleStyle, { backgroundColor: bubbleColor }]}>
+                    {item.isLoading ? (
+                        <ActivityIndicator color={isUser ? 'white' : textColor} />
+                    ) : (
+                        <Text style={textStyle}>{item.text}</Text>
+                    )}
+                </View>
+                <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleTimeString()}</Text>
+            </View>
+        </Animated.View>
+    );
+};
+
+
 export default function AiAssistantScreen() {
     const [status, setStatus] = useState('idle'); // 'idle', 'recording', 'thinking', 'no_permission'
     const [chatHistory, setChatHistory] = useState([]);
@@ -45,6 +75,7 @@ export default function AiAssistantScreen() {
     const [hasPermission, setHasPermission] = useState(false);
     const [recording, setRecording] = useState();
     const [isMuted, setIsMuted] = useState(false);
+    const [textInput, setTextInput] = useState('');
     const appState = useRef(AppState.currentState);
 
     const primaryColor = useThemeColor({}, 'primary');
@@ -73,7 +104,7 @@ export default function AiAssistantScreen() {
         try {
             const storedGroups = await AsyncStorage.getItem('groups');
             setPropertyData(storedGroups ? JSON.parse(storedGroups) : []);
-             setChatHistory([{ type: 'ai', text: 'नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?' }]);
+            setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
         } catch (e) {
             Alert.alert("Error", "Failed to load property data.");
         }
@@ -110,28 +141,33 @@ export default function AiAssistantScreen() {
         setRecording(undefined);
 
         if (uri) {
-            setChatHistory(prev => [...prev, { type: 'user', text: '🎤 Audio' }]);
-            fetchAiResponse(uri);
+            setChatHistory(prev => [...prev, { type: 'user', text: '🎤 Audio', timestamp: new Date() }]);
+            fetchAiResponse({ audioUri: uri });
         } else {
             setStatus('idle');
         }
     }
     
-    const fetchAiResponse = async (audioUri) => {
-        if (!audioUri || !propertyData) {
+    const handleSendText = () => {
+        if (textInput.trim().length > 0) {
+            setChatHistory(prev => [...prev, { type: 'user', text: textInput, timestamp: new Date() }]);
+            fetchAiResponse({ text: textInput });
+            setTextInput('');
+        }
+    };
+
+    const fetchAiResponse = async ({ audioUri, text }) => {
+        if ((!audioUri && !text) || !propertyData) {
             setStatus('idle');
             return;
         }
 
+        setStatus('thinking');
         const thinkingMessage = { type: 'ai', text: '...', isLoading: true, timestamp: new Date() };
         setChatHistory(prev => [...prev, thinkingMessage]);
 
         try {
-            const audioBase64 = await FileSystem.readAsStringAsync(audioUri, { encoding: FileSystem.EncodingType.Base64 });
             const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const fileExtension = audioUri.split('.').pop();
-            const mimeType = `audio/${fileExtension}`;
-
             const today = new Date().toLocaleDateString('en-CA');
             const prompt = `
                 You are a specialized AI assistant for a property manager.
@@ -185,7 +221,17 @@ export default function AiAssistantScreen() {
                 2.  Second, identify the user's intent.
                 3.  Finally, provide the correct style of response in **pure Devanagari Hindi** and ensure the output is **clean plain text with no special characters**, suitable for a text-to-speech engine.
             `;
-            const result = await model.generateContent([prompt, { inlineData: { mimeType, data: audioBase64 } }]);
+
+            let result;
+            if (audioUri) {
+                const audioBase64 = await FileSystem.readAsStringAsync(audioUri, { encoding: FileSystem.EncodingType.Base64 });
+                const fileExtension = audioUri.split('.').pop();
+                const mimeType = `audio/${fileExtension}`;
+                result = await model.generateContent([prompt, { inlineData: { mimeType, data: audioBase64 } }]);
+            } else {
+                result = await model.generateContent([prompt, text]);
+            }
+            
             const responseText = result.response.text();
             
             if (!isMuted) {
@@ -209,59 +255,65 @@ export default function AiAssistantScreen() {
 
     const renderChatItem = ({ item }) => {
         const isUser = item.type === 'user';
-        const bubbleStyle = isUser ? styles.userBubble : styles.aiBubble;
-        const textStyle = isUser ? styles.userText : [styles.aiText, { color: textColor }];
         const bubbleColor = isUser ? primaryColor : cardColor;
-
-        return (
-            <View style={[styles.chatItem, isUser ? styles.userItem : styles.aiItem]}>
-                <View style={[styles.bubble, bubbleStyle, { backgroundColor: bubbleColor }]}>
-                    {item.isLoading ? (
-                        <ActivityIndicator color={isUser ? 'white' : textColor} />
-                    ) : (
-                        <Text style={textStyle}>{item.text}</Text>
-                    )}
-                </View>
-            </View>
-        );
+        return <ChatBubble item={item} isUser={isUser} bubbleColor={bubbleColor} textColor={textColor} />;
     };
 
     return (
-        <ThemedView style={styles.container}>
-            <ChatHeader isMuted={isMuted} onToggleMute={() => setIsMuted(!isMuted)} />
-            <LinearGradient
-                colors={[backgroundColor, '#00000000'] }
-                style={styles.gradient}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-            />
-            <FlatList
-                data={chatHistory}
-                renderItem={renderChatItem}
-                keyExtractor={(_, index) => index.toString()}
-                contentContainerStyle={styles.chatContainer}
-                inverted
-            />
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={100}>
-                <View style={styles.micContainer}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: backgroundColor }}>
+            <ThemedView style={styles.container}>
+                <ChatHeader isMuted={isMuted} onToggleMute={() => setIsMuted(!isMuted)} />
+                 <KeyboardAvoidingView 
+                    style={{flex:1}}
+                    behavior={Platform.OS === "ios" ? "padding" : "height"} 
+                    keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+                >
+                <LinearGradient
+                    colors={[backgroundColor, '#00000000']}
+                    style={styles.gradient}
+                    start={{ x: 0.5, y: 0 }}
+                    end={{ x: 0.5, y: 1 }}
+                />
+                <FlatList
+                    data={chatHistory}
+                    renderItem={renderChatItem}
+                    keyExtractor={(_, index) => index.toString()}
+                    contentContainerStyle={styles.chatContainer}
+                    inverted
+                />
+               
+                    <View style={styles.inputContainer}>
+                        <TextInput
+                            style={[styles.textInput, { color: textColor, backgroundColor: cardColor }]}
+                            placeholder={t('type_a_message')}
+                            placeholderTextColor="#9CA3AF"
+                            value={textInput}
+                            onChangeText={setTextInput}
+                        />
+                        <TouchableOpacity onPress={handleSendText} style={[styles.sendButton, { backgroundColor: primaryColor }]}>
+                            <Ionicons name="send" size={20} color="white" />
+                        </TouchableOpacity>
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.micButton,
+                                {
+                                    backgroundColor: pressed || status === 'recording' ? '#F87171' : primaryColor,
+                                    transform: [{ scale: pressed || status === 'recording' ? 1.1 : 1 }]
+                                }
+                            ]}
+                            onPressIn={startRecording}
+                            onPressOut={stopRecording}
+                            disabled={status === 'thinking' || status === 'no_permission'}
+                        >
+                            {status === 'thinking' ? <ActivityIndicator color="white" /> : <Ionicons name="mic" size={24} color="white" />}
+                        </Pressable>
+                    </View>
                     <ThemedText style={styles.statusText}>
-                        {status === 'recording' ? 'Recording...' : status === 'thinking' ? 'Thinking...' : 'Hold to Speak'}
+                        {status === 'recording' ? 'Recording...' : status === 'thinking' ? 'Thinking...' : 'Hold to Speak or type a message'}
                     </ThemedText>
-                    <Pressable 
-                        style={({ pressed }) => [
-                            styles.micButton, 
-                            { backgroundColor: pressed || status === 'recording' ? '#F87171' : primaryColor, 
-                            transform: [{ scale: pressed || status === 'recording' ? 1.1 : 1 }] }
-                        ]}
-                        onPressIn={startRecording}
-                        onPressOut={stopRecording}
-                        disabled={status === 'thinking' || status === 'no_permission'}
-                    >
-                        {status === 'thinking' ? <ActivityIndicator color="white" size="large" /> : <Ionicons name="mic" size={40} color="white" />}
-                    </Pressable>
-                </View>
-            </KeyboardAvoidingView>
-        </ThemedView>
+                </KeyboardAvoidingView>
+            </ThemedView>
+        </SafeAreaView>
     );
 }
 
@@ -274,7 +326,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: 20,
-        paddingTop: 50,
+        paddingTop: Platform.OS === 'ios' ? 20 : 40,
         paddingBottom: 15,
         borderBottomWidth: 1,
         borderBottomColor: '#333',
@@ -286,7 +338,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         left: 0,
         right: 0,
-        top: 100, // Adjust to be below the header
+        top: 0, 
         height: 50,
         zIndex: 1,
     },
@@ -294,11 +346,11 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         paddingHorizontal: 10,
         paddingBottom: 10,
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-end'
     },
     chatItem: {
-        marginVertical: 5,
-        maxWidth: '80%',
+        marginVertical: 8,
+        maxWidth: '85%',
     },
     userItem: {
         alignSelf: 'flex-end',
@@ -324,15 +376,36 @@ const styles = StyleSheet.create({
     aiText: {
         fontSize: 16,
     },
-    micContainer: {
+    inputContainer: {
+        flexDirection: 'row',
         alignItems: 'center',
-        paddingBottom: 30,
-        paddingTop: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderTopWidth: 1,
+        borderTopColor: '#333',
+    },
+    textInput: {
+        flex: 1,
+        height: 45,
+        borderRadius: 25,
+        paddingHorizontal: 20,
+        marginRight: 10,
+        borderWidth: 1,
+        borderColor: '#4A5568',
+        fontSize: 16,
+    },
+    sendButton: {
+        width: 45,
+        height: 45,
+        borderRadius: 22.5,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
     },
     micButton: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 55,
+        height: 55,
+        borderRadius: 27.5,
         justifyContent: 'center',
         alignItems: 'center',
         elevation: 8,
@@ -342,8 +415,16 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 3 },
     },
     statusText: {
-        marginBottom: 15,
-        fontSize: 14,
+        textAlign: 'center',
+        paddingBottom: 5,
+        fontSize: 12,
         color: '#9CA3AF',
+    },
+    timestamp: {
+        fontSize: 10,
+        color: '#9CA3AF',
+        marginTop: 5,
+        textAlign: 'right',
+        paddingRight: 5,
     },
 });

@@ -84,5 +84,7 @@
     "unmark": "Unmark",
     "unmarking_not_allowed_title": "Action Not Allowed",
     "unmarking_not_allowed_message": "You must unmark payments in reverse chronological order. Please unmark later months first.",
-    "ai_assistant": "AI Assistant"
+    "ai_assistant": "AI Assistant",
+    "type_a_message": "Type a message...",
+    "hold_to_speak_or_type": "Hold to Speak or type a message"
 }

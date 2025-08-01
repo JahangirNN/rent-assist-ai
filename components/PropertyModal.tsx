@@ -1,14 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { View, Modal, TextInput, StyleSheet, KeyboardAvoidingView, Platform, Pressable, Alert, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
 
+const MemoizedTextInput = memo(({ style, placeholder, value, onChangeText, keyboardType, placeholderTextColor }) => (
+    <TextInput
+        style={style}
+        placeholder={placeholder}
+        placeholderTextColor={placeholderTextColor}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+    />
+));
+
 export default function PropertyModal({ isVisible, onClose, onSave, property, onDelete }) {
-  const [name, setName] = useState('');
-  const [tenantName, setTenantName] = useState('');
-  const [rentAmount, setRentAmount] = useState('');
-  const [tenantMobile, setTenantMobile] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    tenantName: '',
+    rentAmount: '',
+    tenantMobile: '',
+  });
 
   const primaryColor = useThemeColor({}, 'primary');
   const cardColor = useThemeColor({}, 'card');
@@ -17,36 +30,42 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
 
   useEffect(() => {
     if (property) {
-      setName(property.name);
-      setTenantName(property.tenantName || '');
-      setRentAmount(property.rentAmount ? property.rentAmount.toString() : '');
-      setTenantMobile(property.tenantMobile || '');
+      setFormData({
+        name: property.name,
+        tenantName: property.tenantName || '',
+        rentAmount: property.rentAmount ? property.rentAmount.toString() : '',
+        tenantMobile: property.tenantMobile || '',
+      });
     } else {
-      setName('');
-      setTenantName('');
-      setRentAmount('');
-      setTenantMobile('');
+      setFormData({
+        name: '',
+        tenantName: '',
+        rentAmount: '',
+        tenantMobile: '',
+      });
     }
   }, [property]);
 
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
   const handleSave = () => {
-    if (!name || !rentAmount) {
+    if (!formData.name || !formData.rentAmount) {
       Alert.alert(t('heads_up'), t('fill_required_fields'));
       return;
     }
 
-    if (tenantMobile && !/^\d{10}$/.test(tenantMobile)) {
+    if (formData.tenantMobile && !/^\d{10}$/.test(formData.tenantMobile)) {
         Alert.alert(t('heads_up'), t('invalid_mobile'));
         return;
     }
 
     onSave({
       id: property ? property.id : Date.now().toString(),
-      name,
-      tenantName,
-      rentAmount: parseFloat(rentAmount),
-      tenantMobile,
-      dueDate: 1, // Defaulting due date to 1
+      ...formData,
+      rentAmount: parseFloat(formData.rentAmount),
+      dueDate: 1, 
       payments: property ? property.payments : [],
       createdAt: property ? property.createdAt : new Date().toISOString(),
     });
@@ -73,34 +92,34 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView contentContainerStyle={[styles.container, {backgroundColor: cardColor}]}>
             <ThemedText type="title" style={styles.title}>{property ? t('edit_property') : t('add_property')}</ThemedText>
-            <TextInput
+            <MemoizedTextInput
               style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
               placeholder={t('property_name')}
               placeholderTextColor="#9CA3AF"
-              value={name}
-              onChangeText={setName}
+              value={formData.name}
+              onChangeText={(value) => handleInputChange('name', value)}
             />
-            <TextInput
+            <MemoizedTextInput
               style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
               placeholder={t('tenant_name')}
               placeholderTextColor="#9CA3AF"
-              value={tenantName}
-              onChangeText={setTenantName}
+              value={formData.tenantName}
+              onChangeText={(value) => handleInputChange('tenantName', value)}
             />
-            <TextInput
+            <MemoizedTextInput
               style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
               placeholder={t('rent_amount')}
               placeholderTextColor="#9CA3AF"
-              value={rentAmount}
-              onChangeText={setRentAmount}
+              value={formData.rentAmount}
+              onChangeText={(value) => handleInputChange('rentAmount', value)}
               keyboardType="numeric"
             />
-            <TextInput
+            <MemoizedTextInput
               style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
               placeholder={t('tenant_mobile_optional')}
               placeholderTextColor="#9CA3AF"
-              value={tenantMobile}
-              onChangeText={setTenantMobile}
+              value={formData.tenantMobile}
+              onChangeText={(value) => handleInputChange('tenantMobile', value)}
               keyboardType="phone-pad"
             />
             <View style={styles.buttonContainer}>

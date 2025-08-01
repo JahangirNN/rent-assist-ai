@@ -84,5 +84,7 @@
     "unmark": "અચિહ્નિત કરો",
     "unmarking_not_allowed_title": "ક્રિયાની મંજૂરી નથી",
     "unmarking_not_allowed_message": "તમારે ઉલટા કાલક્રમિક ક્રમમાં ચુકવણીઓ અચિહ્નિત કરવી આવશ્યક છે. કૃપા કરીને પહેલા પછીના મહિનાઓ અચિહ્નિત કરો.",
-    "ai_assistant": "AI સહાયક"
+    "ai_assistant": "AI સહાયક",
+    "type_a_message": "સંદેશ લખો...",
+    "hold_to_speak_or_type": "બોલવા માટે દબાવી રાખો અથવા સંદેશ લખો"
 }
