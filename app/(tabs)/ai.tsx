@@ -73,11 +73,11 @@ export default function AiAssistantScreen() {
     const [chatHistory, setChatHistory] = useState<any[]>([]);
     const [propertyData, setPropertyData] = useState({ locations: [], api: '' });
     const [hasPermission, setHasPermission] = useState(false);
-    const [recording, setRecording] = useState<Audio.Recording | undefined>();
     const [isMuted, setIsMuted] = useState(false);
     const [textInput, setTextInput] = useState('');
     const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
     
+    const recordingRef = useRef<Audio.Recording | null>(null);
     const appState = useRef(AppState.currentState);
     const flatListRef = useRef<FlatList>(null);
     const isMutedRef = useRef(isMuted);
@@ -98,9 +98,6 @@ export default function AiAssistantScreen() {
         if (chatHistory.length > 0) {
             flatListRef.current?.scrollToEnd({ animated: true });
         }
-    }, [chatHistory]);
-
-    useEffect(() => {
         if (chatHistory.length > 1) {
             const dataToStore = { history: chatHistory, timestamp: new Date().toISOString() };
             AsyncStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(dataToStore));
@@ -113,7 +110,6 @@ export default function AiAssistantScreen() {
             setHasPermission(status === 'granted');
             if (status !== 'granted') setStatus('no_permission');
         } catch (error) {
-            console.error("Error requesting mic permission:", error);
             setStatus('no_permission');
         }
     }, []);
@@ -146,8 +142,7 @@ export default function AiAssistantScreen() {
             if (storedChatData) {
                 try {
                     const { history, timestamp } = JSON.parse(storedChatData);
-                    const oneHour = 3600 * 1000;
-                    if (Date.now() - new Date(timestamp).getTime() < oneHour) {
+                    if (Date.now() - new Date(timestamp).getTime() < 10 * 60 * 1000) {
                         setChatHistory(history.map((item: any) => ({...item, timestamp: new Date(item.timestamp)})));
                     } else {
                         await AsyncStorage.removeItem(CHAT_HISTORY_KEY);
@@ -173,18 +168,26 @@ export default function AiAssistantScreen() {
                 firestoreUnsubscribe.current = null;
             }
             Speech.stop();
-            if (recording) {
-                recording.stopAndUnloadAsync();
-                setRecording(undefined);
+            if (recordingRef.current) {
+                recordingRef.current.stopAndUnloadAsync();
+                recordingRef.current = null;
             }
             Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
             Keyboard.dismiss();
             setStatus('idle');
         };
-    }, [loadDataAndChatHistory, recording]));
+    }, [loadDataAndChatHistory]));
 
     const genAI = useMemo(() => geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null, [geminiApiKey]);
-    const model = useMemo(() => genAI ? genAI.getGenerativeModel({ model: "gemini-1.5-flash" }) : null, [genAI]);
+    const model = useMemo(() => {
+        if (!genAI) return null;
+        return genAI.getGenerativeModel({
+            model: "gemini-2.0-flash",
+            generationConfig: {
+                temperature: 0.5,
+            }
+        });
+    }, [genAI]);
     
     const fetchAiResponse = useCallback(async ({ audioUri, text }: { audioUri?: string; text?: string }) => {
         if ((!audioUri && !text) || !propertyData || !model) {
@@ -198,13 +201,8 @@ export default function AiAssistantScreen() {
         
         try {
             const today = new Date().toLocaleDateString('en-CA');
-            const formattedHistory = chatHistoryRef.current
-                .filter(item => !item.isLoading)
-                .map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
-                .join('\n');
-            
-            const prompt = `
-                You are a specialized AI assistant for a property manager. Also advice and formally chat with the client you work for.
+            const formattedHistory = chatHistoryRef.current.filter(item => !item.isLoading).map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
+            const prompt = `You are a specialized AI assistant for a property manager. Also advice and formally chat with the your employer.
 
                 ### PREVIOUS CONVERSATION HISTORY ###
                 ${formattedHistory}
@@ -257,7 +255,7 @@ export default function AiAssistantScreen() {
                 1.  First, perform your internal calculation.
                 2.  Second, identify the user's intent.
                 3.  Finally, provide the correct style of response in **pure Devanagari Hindi** and ensure the output is **clean plain text with no special characters**, suitable for a text-to-speech engine.
-            `;
+            `; // Prompt removed for brevity
             
             let result;
             if (audioUri) {
@@ -284,29 +282,27 @@ export default function AiAssistantScreen() {
     }, [model, propertyData]);
 
     const startRecording = useCallback(async () => {
-        if (!hasPermission) return Alert.alert("Microphone Permission Needed", "Please grant microphone access in settings.", [{ text: "Open Settings", onPress: () => Linking.openSettings() }, { text: "Cancel", style: "cancel" }]);
-        if (!geminiApiKey) return Alert.alert("API Key Not Loaded", "Please ensure your API key is configured in Firestore.");
+        if (!hasPermission) return Alert.alert("Microphone Permission", "Please grant microphone access in settings.");
+        if (!geminiApiKey) return Alert.alert("API Key Not Loaded", "Please check your configuration.");
         
         setStatus('recording');
         try {
             await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-            const newRecording = new Audio.Recording();
-            await newRecording.prepareToRecordAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
-            await newRecording.startAsync();
-            setRecording(newRecording);
+            const { recording } = await Audio.Recording.createAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
+            recordingRef.current = recording;
         } catch (err) {
             setStatus('idle');
         }
     }, [hasPermission, geminiApiKey]);
 
     const stopRecording = useCallback(async () => {
-        if (!recording) return;
+        if (!recordingRef.current) return;
         
         setStatus('thinking');
         try {
-            await recording.stopAndUnloadAsync();
-            const uri = recording.getURI();
-            setRecording(undefined);
+            await recordingRef.current.stopAndUnloadAsync();
+            const uri = recordingRef.current.getURI();
+            recordingRef.current = null;
             await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
 
             if (uri) {
@@ -318,7 +314,7 @@ export default function AiAssistantScreen() {
         } catch (error) {
             setStatus('idle');
         }
-    }, [recording, fetchAiResponse]);
+    }, [fetchAiResponse]);
     
     const handleSendText = useCallback(() => {
         if (textInput.trim().length > 0) {
@@ -335,16 +331,13 @@ export default function AiAssistantScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor }]}>
             <ChatHeader isMuted={isMuted} onToggleMute={onToggleMute} />
-            <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={100}>
+            <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
                 <FlatList
                     ref={flatListRef}
                     data={chatHistory}
                     renderItem={renderChatItem}
                     keyExtractor={(item, index) => `${item.timestamp.toISOString()}-${index}`}
                     contentContainerStyle={styles.chatContainer}
-                    initialNumToRender={15}
-                    maxToRenderPerBatch={20}
-                    windowSize={21}
                 />
                 <View style={styles.inputContainer}>
                     <TextInput
