@@ -2,12 +2,38 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { SafeAreaView, StyleSheet, Modal, View } from 'react-native';
 
 // Import Firebase
 import { app } from '../firebase/config';
+import { NetworkProvider, useNetworkContext } from '@/context/NetworkContext';
+import { OfflineNotice } from '@/components/OfflineNotice';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+function RootLayoutNav() {
+  const { isConnected } = useNetworkContext();
+
+  return (
+    <SafeAreaView style={styles.container}>
+        <Modal
+            animationType="slide"
+            transparent={true}
+            visible={!isConnected}
+        >
+            <View style={styles.centeredView}>
+                <OfflineNotice />
+            </View>
+        </Modal>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="group/detail" options={{ headerShown: false }} />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+    </SafeAreaView>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -25,10 +51,20 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="group/detail" options={{ headerShown: false }} />
-      <Stack.Screen name="+not-found" />
-    </Stack>
+    <NetworkProvider>
+      <RootLayoutNav />
+    </NetworkProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+});
