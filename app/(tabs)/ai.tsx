@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react';
-import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, Linking, AppState, TouchableOpacity, KeyboardAvoidingView, Platform, TextInput, Animated, SafeAreaView, Keyboard } from 'react-native';
+import { View, StyleSheet, Pressable, Text, FlatList, ActivityIndicator, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, TextInput, Animated, SafeAreaView, Keyboard } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useFocusEffect } from 'expo-router';
 import * as Speech from 'expo-speech';
-import { Audio } from 'expo-av';
+import { useAudioRecorder, useAudioRecorderState, AudioModule, setAudioModeAsync, RecordingPresets } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
 import { doc, onSnapshot, setDoc, Unsubscribe } from 'firebase/firestore';
 
@@ -77,8 +77,9 @@ export default function AiAssistantScreen() {
     const [textInput, setTextInput] = useState('');
     const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
     
-    const recordingRef = useRef<Audio.Recording | null>(null);
-    const appState = useRef(AppState.currentState);
+    const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+    const recorderState = useAudioRecorderState(audioRecorder);
+
     const flatListRef = useRef<FlatList>(null);
     const isMutedRef = useRef(isMuted);
     const chatHistoryRef = useRef(chatHistory);
@@ -104,51 +105,44 @@ export default function AiAssistantScreen() {
         }
     }, [chatHistory]);
 
-    const requestMicPermission = useCallback(async () => {
-        try {
-            const { status } = await Audio.requestPermissionsAsync();
-            setHasPermission(status === 'granted');
-            if (status !== 'granted') setStatus('no_permission');
-        } catch (error) {
-            setStatus('no_permission');
-        }
+    useEffect(() => {
+        const checkPermissions = async () => {
+            if (!AudioModule) {
+                Alert.alert('Error', 'Audio module is not available.');
+                return;
+            }
+            const status = await AudioModule.requestRecordingPermissionsAsync();
+            setHasPermission(status.granted);
+            if (status.granted) {
+                await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+            } else {
+                setStatus('no_permission');
+            }
+        };
+        checkPermissions();
     }, []);
 
-    useEffect(() => {
-        const subscription = AppState.addEventListener('change', nextAppState => {
-            if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-                requestMicPermission();
-            }
-            appState.current = nextAppState;
-        });
-        return () => subscription.remove();
-    }, [requestMicPermission]);
-
     const loadDataAndChatHistory = useCallback(async () => {
-        requestMicPermission();
         const docRef = doc(db, "rentaData", "userProfile");
-        firestoreUnsubscribe.current = onSnapshot(docRef, async (doc) => {
+        firestoreUnsubscribe.current = onSnapshot(docRef, (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
                 setPropertyData(data);
-                if (data.api && data.api !== geminiApiKey) setGeminiApiKey(data.api);
+                if (data.api && data.api !== geminiApiKey) {
+                    setGeminiApiKey(data.api);
+                }
             } else {
-                await setDoc(docRef, { locations: [], api: '' });
+                setDoc(docRef, { locations: [], api: '' });
             }
         });
 
         try {
             const storedChatData = await AsyncStorage.getItem(CHAT_HISTORY_KEY);
             if (storedChatData) {
-                try {
-                    const { history, timestamp } = JSON.parse(storedChatData);
-                    if (Date.now() - new Date(timestamp).getTime() < 10 * 60 * 1000) {
-                        setChatHistory(history.map((item: any) => ({...item, timestamp: new Date(item.timestamp)})));
-                    } else {
-                        await AsyncStorage.removeItem(CHAT_HISTORY_KEY);
-                        setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
-                    }
-                } catch (e) {
+                const { history, timestamp } = JSON.parse(storedChatData);
+                if (Date.now() - new Date(timestamp).getTime() < 10 * 60 * 1000) {
+                    setChatHistory(history.map((item: any) => ({...item, timestamp: new Date(item.timestamp)})));
+                } else {
                     await AsyncStorage.removeItem(CHAT_HISTORY_KEY);
                     setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
                 }
@@ -158,31 +152,28 @@ export default function AiAssistantScreen() {
         } catch (e) {
             setChatHistory([{ type: 'ai', text: 'Hello! मैं आपकी कैसे मदद कर सकता हूँ?', timestamp: new Date() }]);
         }
-    }, [geminiApiKey, requestMicPermission]);
+    }, [geminiApiKey]);
 
     useFocusEffect(useCallback(() => {
         loadDataAndChatHistory();
         return () => {
             if (firestoreUnsubscribe.current) {
                 firestoreUnsubscribe.current();
-                firestoreUnsubscribe.current = null;
             }
             Speech.stop();
-            if (recordingRef.current) {
-                recordingRef.current.stopAndUnloadAsync();
-                recordingRef.current = null;
+            if (recorderState.isRecording) {
+                audioRecorder.stop();
             }
-            Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
             Keyboard.dismiss();
             setStatus('idle');
         };
-    }, [loadDataAndChatHistory]));
+    }, [loadDataAndChatHistory, audioRecorder, recorderState.isRecording]));
 
     const genAI = useMemo(() => geminiApiKey ? new GoogleGenerativeAI(geminiApiKey) : null, [geminiApiKey]);
     const model = useMemo(() => {
         if (!genAI) return null;
         return genAI.getGenerativeModel({
-            model: "gemini-2.0-flash",
+            model: "gemini-2.0-flash", 
             generationConfig: {
                 temperature: 0.5,
             }
@@ -194,7 +185,7 @@ export default function AiAssistantScreen() {
             setStatus('idle');
             return;
         }
-
+    
         setStatus('thinking');
         const thinkingMessage = { type: 'ai', text: '...', isLoading: true, timestamp: new Date() };
         setChatHistory(prev => [...prev, thinkingMessage]);
@@ -203,10 +194,10 @@ export default function AiAssistantScreen() {
             const today = new Date().toLocaleDateString('en-CA');
             const formattedHistory = chatHistoryRef.current.filter(item => !item.isLoading).map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
             const prompt = `You are a specialized AI assistant for a property manager. Also advice and formally chat with the your employer.
-
+    
                 ### PREVIOUS CONVERSATION HISTORY ###
                 ${formattedHistory}
-
+    
                 ### 📜 PRIMARY DIRECTIVE: SCRIPT AND FORMATTING 📜 ###
                 Your two most important rules are:
                 1.  **HINDI SCRIPT ONLY:** Respond ONLY in pure Hindi, using the Devanagari script (हिन्दी देवनागरी लिपि). Do not use English letters (no Hinglish).
@@ -215,47 +206,47 @@ export default function AiAssistantScreen() {
                     -   Use only commas (,) for short pauses and full stops (.) to end sentences. This helps the speech engine sound more natural. [4, 5]
                     -   Write short, simple sentences. Long sentences can sound unnatural when read by a TTS engine. [1]
                     -   The final output must be clean, plain text.
-
+    
                 ### KNOWLEDGE AND SCOPE ###
                 1.  Your knowledge is strictly limited to the property data provided below.
                 2.  Do not use any external information.
                 3.  Today's date is: ${today}. This is the most important date for all calculations.
                 4.  Property Data: ${JSON.stringify(propertyData, null, 2)}
-
+    
                 ### 🧠 MENTAL WALKTHROUGH: INTERNAL CALCULATION ###
                 Before responding, you MUST ALWAYS perform these calculations internally to understand the situation. This is your private thought process.
                 1.  **Find Last Paid Month:** Check the 'payments' array to find the latest month paid.
                 2.  **Determine Due Period:** Identify the start and end months for which rent is due. The start is the month *after* the last paid month. The end is the current month based on today's date (${today}).
                 3.  **Count Unpaid Months:** Count the number of months in the due period one-by-one to avoid errors.
                 4.  **Calculate Total Due:** Multiply the count of unpaid months by the 'rentAmount'.
-
+    
                 ### 🎯 YOUR TASK: Understand Intent and Respond Appropriately 🎯 ###
                 Your main task is to first understand the user's question and then provide an answer with the right level of detail, following the TTS-friendly formatting rules. Choose one of the following two response modes.
-
+    
                 ---
                 #### Response Mode 1: Direct Answer (संक्षिप्त जवाब)
                 Use this mode if the user asks a specific, direct question. The answer must be short, to the point, and in clean plain text.
-
+    
                 *   **User Question Example:** "क्या रमेश ने जुलाई २०२५ का भाड़ा दिया है?"
                 *   **Your Correct TTS-Friendly Response (if paid):** "जी, रमेश ने जुलाई २०२५ का भाड़ा दे दिया है।"
                 *   **Your Correct TTS-Friendly Response (if not paid):** "नहीं, रमेश का जुलाई २०२५ का भाड़ा बाकी है।"
-
+    
                 ---
                 #### Response Mode 2: Detailed Summary (विस्तृत जवाब)
                 Use this mode if the user asks a general question about rent status or total dues. This response should include the full calculation, presented as simple, clean sentences.
-
+    
                 *   **User Question Example:** "रमेश का क्या हिसाब है?"
                 *   **Your Correct TTS-Friendly Response:** "रमेश का किराया सितंबर २०२५ से दिसंबर २०२५ तक का बाकी है। कुल चार महीने से किराया नहीं दिया है। इसलिए कुल बीस हजार रुपये लेने हैं।"
-
+    
                 *   **If no rent is due for a tenant asked about in detail, respond:** "रमेश का कोई किराया बाकी नहीं है। सभी भुगतान समय पर हैं।"
                 ---
-
+    
                 ### FINAL INSTRUCTION ###
                 Now, please respond to the user's question.
                 1.  First, perform your internal calculation.
                 2.  Second, identify the user's intent.
                 3.  Finally, provide the correct style of response in **pure Devanagari Hindi** and ensure the output is **clean plain text with no special characters**, suitable for a text-to-speech engine.
-            `; // Prompt removed for brevity
+            `;
             
             let result;
             if (audioUri) {
@@ -271,39 +262,53 @@ export default function AiAssistantScreen() {
             
             if (!isMutedRef.current) Speech.speak(responseText, { language: 'hi-IN', pitch: 1.0, rate: 0.9 });
             
-            setChatHistory(prev => prev.map(item => item.isLoading && item.timestamp === thinkingMessage.timestamp ? { type: 'ai', text: responseText, timestamp: new Date() } : item));
-
+            // --- THIS IS THE FIX ---
+            setChatHistory(prev => [
+                ...prev.filter(item => !item.isLoading), // Remove all loading bubbles
+                { type: 'ai', text: responseText, timestamp: new Date() } // Add the new response
+            ]);
+    
         } catch (error) {
             const errorMessage = "माफ़ कीजिए, मुझे जवाब देने में कोई समस्या हुई।";
-            setChatHistory(prev => prev.map(item => item.isLoading ? { type: 'ai', text: errorMessage, timestamp: new Date() } : item));
+            
+            // --- THIS IS THE FIX FOR THE ERROR CASE ---
+            setChatHistory(prev => [
+                ...prev.filter(item => !item.isLoading), // Remove all loading bubbles
+                { type: 'ai', text: errorMessage, timestamp: new Date() } // Add the new error message
+            ]);
         } finally {
             setStatus('idle');
         }
     }, [model, propertyData]);
-
+    
     const startRecording = useCallback(async () => {
-        if (!hasPermission) return Alert.alert("Microphone Permission", "Please grant microphone access in settings.");
-        if (!geminiApiKey) return Alert.alert("API Key Not Loaded", "Please check your configuration.");
+        if (!hasPermission) {
+            Alert.alert("Microphone Permission", "Please grant microphone access in your device settings.");
+            return;
+        }
+        if (!geminiApiKey) {
+            Alert.alert("API Key Not Loaded", "Please check your configuration.");
+            return;
+        }
         
-        setStatus('recording');
         try {
-            await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-            const { recording } = await Audio.Recording.createAsync(Audio.RECORDING_OPTIONS_PRESET_HIGH_QUALITY);
-            recordingRef.current = recording;
+            setStatus('recording');
+            await audioRecorder.prepareToRecordAsync();
+            await audioRecorder.record();
         } catch (err) {
+            console.error('Failed to start recording:', err);
+            Alert.alert('Recording Failed', 'Could not start the audio recording.');
             setStatus('idle');
         }
-    }, [hasPermission, geminiApiKey]);
+    }, [hasPermission, geminiApiKey, audioRecorder]);
 
     const stopRecording = useCallback(async () => {
-        if (!recordingRef.current) return;
+        if (!recorderState.isRecording) return;
         
         setStatus('thinking');
         try {
-            await recordingRef.current.stopAndUnloadAsync();
-            const uri = recordingRef.current.getURI();
-            recordingRef.current = null;
-            await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+            const result = await audioRecorder.stop();
+            const uri = result.url;
 
             if (uri) {
                 setChatHistory(prev => [...prev, { type: 'user', text: '🎤 Audio', timestamp: new Date() }]);
@@ -312,9 +317,11 @@ export default function AiAssistantScreen() {
                 setStatus('idle');
             }
         } catch (error) {
+            console.error('Failed to stop recording:', error);
+            Alert.alert('Error', 'An error occurred while stopping the recording.');
             setStatus('idle');
         }
-    }, [fetchAiResponse]);
+    }, [recorderState.isRecording, audioRecorder, fetchAiResponse]);
     
     const handleSendText = useCallback(() => {
         if (textInput.trim().length > 0) {
@@ -327,6 +334,9 @@ export default function AiAssistantScreen() {
 
     const onToggleMute = useCallback(() => setIsMuted(prev => !prev), []);
     const renderChatItem = useCallback(({ item }: { item: any }) => <ChatBubble item={item} isUser={item.type === 'user'} />, []);
+    
+    const isMicDisabled = status === 'thinking' || !hasPermission || !geminiApiKey;
+    const isRecording = status === 'recording' && recorderState.isRecording;
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor }]}>
@@ -352,15 +362,21 @@ export default function AiAssistantScreen() {
                         <Ionicons name="send" size={20} color="white" />
                     </TouchableOpacity>
                     <Pressable
-                        style={({ pressed }) => [styles.micButton, { backgroundColor: pressed || status === 'recording' ? '#F87171' : primaryColor }]}
+                        style={({ pressed }) => [
+                            styles.micButton,
+                            {
+                                backgroundColor: isMicDisabled ? '#9CA3AF' : (pressed || isRecording ? '#F87171' : primaryColor),
+                                transform: [{ scale: (pressed && !isMicDisabled) || isRecording ? 1.05 : 1 }]
+                            }
+                        ]}
                         onPressIn={startRecording}
                         onPressOut={stopRecording}
-                        disabled={status === 'thinking' || status === 'no_permission'}
+                        disabled={isMicDisabled}
                     >
                         {status === 'thinking' ? <ActivityIndicator color="white" /> : <Ionicons name="mic" size={24} color="white" />}
                     </Pressable>
                 </View>
-                {Platform.OS === 'android' && <ThemedText style={styles.statusText}>{status === 'recording' ? 'Recording...' : status === 'thinking' ? 'Thinking...' : 'Hold to Speak'}</ThemedText>}
+                {Platform.OS === 'android' && <ThemedText style={styles.statusText}>{isRecording ? 'Recording...' : status === 'thinking' ? 'Thinking...' : isMicDisabled ? 'Loading...' : 'Hold to Speak'}</ThemedText>}
             </KeyboardAvoidingView>
         </SafeAreaView>
     );

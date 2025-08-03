@@ -10,7 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.rentmanager"
+      "bundleIdentifier": "com.anonymous.rentmanager",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +41,13 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for the AI voice assistant."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
