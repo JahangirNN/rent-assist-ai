@@ -30,35 +30,55 @@ const PropertyCard = React.memo(({ item, onOpenPropertyModal, onOpenPaymentModal
         const today = new Date();
         const currentYear = today.getFullYear();
         const currentMonth = today.getMonth() + 1;
-        const currentDate = today.getDate();
         
+        const lastPaidYear = item.lastPaidMonth ? parseInt(item.lastPaidMonth.split('-')[0]) : 0;
+        const lastPaidMonthNum = item.lastPaidMonth ? parseInt(item.lastPaidMonth.split('-')[1]) : 0;
+
         const overdue = [];
-        for (let month = 1; month <= currentMonth; month++) {
-            const monthStr = `${currentYear}-${String(month).padStart(2, '0')}`;
-            if (!(item.payments || []).some(p => p.month === monthStr) && (month < currentMonth || (month === currentMonth && currentDate > (item.dueDate || 1)))) {
-                overdue.push(monthStr);
+        const overpaid = [];
+        
+        // Calculate overdue months
+        let startYear = item.createdAt ? new Date(item.createdAt).getFullYear() : currentYear;
+        let startMonth = item.createdAt ? new Date(item.createdAt).getMonth() + 1 : 1;
+
+        if (item.lastPaidMonth) {
+            startYear = lastPaidYear;
+            startMonth = lastPaidMonthNum + 1;
+            if (startMonth > 12) {
+                startMonth = 1;
+                startYear++;
+            }
+        }
+        
+        for (let y = startYear; y <= currentYear; y++) {
+            const mStart = (y === startYear) ? startMonth : 1;
+            const mEnd = (y < currentYear) ? 12 : currentMonth;
+            for (let m = mStart; m <= mEnd; m++) {
+                overdue.push(`${y}-${String(m).padStart(2, '0')}`);
             }
         }
 
-        const overpaid = [];
-        (item.payments || []).forEach(p => {
-            const [year, month] = p.month.split('-').map(Number);
-            if (year > currentYear || (year === currentYear && month > currentMonth)) {
-                overpaid.push(p.month);
+        // Calculate overpaid months
+        if (lastPaidYear > currentYear || (lastPaidYear === currentYear && lastPaidMonthNum > currentMonth)) {
+            let y = currentYear;
+            let m = currentMonth + 1;
+            while(y < lastPaidYear || (y === lastPaidYear && m <= lastPaidMonthNum)) {
+                overpaid.push(`${y}-${String(m).padStart(2, '0')}`);
+                m++;
+                if (m > 12) {
+                    m = 1;
+                    y++;
+                }
             }
-        });
-
+        }
+        
         let currentStatus;
         if (overdue.length > 0) currentStatus = { text: t('overdue'), color: '#EF4444' };
         else if (overpaid.length > 0) currentStatus = { text: t('overpaid'), color: '#10B981' };
-        else {
-            const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-            if ((item.payments || []).some(p => p.month === currentMonthStr)) currentStatus = { text: t('paid'), color: Colors.light.primary };
-            else currentStatus = { text: t('pending'), color: '#F59E0B' };
-        }
+        else currentStatus = { text: t('paid'), color: Colors.light.primary };
         
         return { status: currentStatus, overdueMonthsList: overdue, overpaidMonthsList: overpaid };
-    }, [item.payments, item.dueDate, t]);
+    }, [item.lastPaidMonth, item.createdAt, t]);
 
     const handleCall = (mobileNumber) => {
         if (!mobileNumber) return;
@@ -183,12 +203,14 @@ export default function GroupDetailScreen() {
                         const due = [], paid = [], overpaid = [];
                         currentGroup.properties.forEach(p => {
                             const today = new Date();
-                            const overdue = getOverdueMonths(p.payments, p.dueDate);
-                            const overpaidMonths = getOverpaidMonths(p.payments);
-
-                            if (overdue.length > 0) due.push(p);
-                            else if (overpaidMonths.length > 0) overpaid.push(p);
-                            else paid.push(p);
+                            const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                            if (!p.lastPaidMonth || p.lastPaidMonth < currentMonthStr) {
+                                due.push(p);
+                            } else if (p.lastPaidMonth > currentMonthStr) {
+                                overpaid.push(p);
+                            } else {
+                                paid.push(p);
+                            }
                         });
                         
                         const sectionData = [
@@ -211,35 +233,6 @@ export default function GroupDetailScreen() {
         }, [groupId, t])
     );
     
-    const getOverdueMonths = (payments, dueDate) => {
-        const overdue = [];
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-        const currentDate = today.getDate();
-        for (let month = 1; month <= currentMonth; month++) {
-            const monthStr = `${currentYear}-${String(month).padStart(2, '0')}`;
-            if (!(payments || []).some(p => p.month === monthStr) && (month < currentMonth || (month === currentMonth && currentDate > (dueDate || 1)))) {
-                overdue.push(monthStr);
-            }
-        }
-        return overdue;
-    };
-
-    const getOverpaidMonths = (payments) => {
-        const overpaid = [];
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-        (payments || []).forEach(p => {
-            const [year, month] = p.month.split('-').map(Number);
-            if (year > currentYear || (year === currentYear && month > currentMonth)) {
-                overpaid.push(p.month);
-            }
-        });
-        return overpaid;
-    };
-
     const updateFirestoreLocations = async (updatedGroup) => {
         const docRef = doc(db, "rentaData", "userProfile");
         try {
@@ -259,7 +252,7 @@ export default function GroupDetailScreen() {
         if (!group) return;
         const updatedProperties = selectedProperty
           ? group.properties.map(p => (p.id === property.id ? property : p))
-          : [...group.properties, property];
+          : [...group.properties, { ...property, createdAt: new Date().toISOString() }];
         
         updateFirestoreLocations({ ...group, properties: updatedProperties });
         setIsPropertyModalVisible(false);
@@ -274,10 +267,10 @@ export default function GroupDetailScreen() {
         setSelectedProperty(null);
     };
     
-    const handleSavePayments = (newPayments) => {
+    const handleSavePayments = (newLastPaidMonth) => {
         if (!group || !selectedProperty) return;
         const updatedProperties = group.properties.map(p => 
-          p.id === selectedProperty.id ? { ...p, payments: newPayments } : p
+          p.id === selectedProperty.id ? { ...p, lastPaidMonth: newLastPaidMonth } : p
         );
         updateFirestoreLocations({ ...group, properties: updatedProperties });
     };

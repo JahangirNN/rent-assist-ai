@@ -6,16 +6,25 @@ import { ThemedView } from './ThemedView';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
 
+function getPreviousMonth(monthId) {
+    if (!monthId) return null;
+    const [year, month] = monthId.split('-').map(Number);
+    if (month === 1) {
+        return `${year - 1}-12`;
+    }
+    return `${year}-${String(month - 1).padStart(2, '0')}`;
+}
+
 export default function PaymentHistoryModal({ isVisible, onClose, property, onSave }) {
     if (!property) return null;
 
     const [year, setYear] = useState(new Date().getFullYear());
-    const [payments, setPayments] = useState(new Set(property.payments.map(p => p.month)));
-    const [tempPayments, setTempPayments] = useState(new Set(payments));
+    const [lastPaidMonth, setLastPaidMonth] = useState(property.lastPaidMonth);
+    const [tempLastPaidMonth, setTempLastPaidMonth] = useState(property.lastPaidMonth);
 
     useEffect(() => {
-        setPayments(new Set(property.payments.map(p => p.month)));
-        setTempPayments(new Set(property.payments.map(p => p.month)));
+        setLastPaidMonth(property.lastPaidMonth);
+        setTempLastPaidMonth(property.lastPaidMonth);
     }, [isVisible, property]);
 
     const cardColor = useThemeColor({}, 'card');
@@ -27,13 +36,10 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
     const disabledTextColor = useThemeColor({ light: '#6B7280', dark: '#9CA3AF' });
 
     const handleMonthPress = (monthId) => {
-        const newTempPayments = new Set(tempPayments);
-        const [monthYear, monthNum] = monthId.split('-').map(Number);
-        const allMonthsInYear = Array.from(newTempPayments).filter(m => m.startsWith(`${monthYear}-`));
-        const maxPaidMonth = Math.max(0, ...allMonthsInYear.map(m => parseInt(m.split('-')[1], 10)));
+        const isCurrentlySelected = tempLastPaidMonth && monthId <= tempLastPaidMonth;
     
-        if (newTempPayments.has(monthId)) {
-            if (monthNum === maxPaidMonth) {
+        if (isCurrentlySelected) {
+            if (monthId === tempLastPaidMonth) {
                 Alert.alert(
                     t('unmark_payment_confirm_title'),
                     t('unmark_payment_confirm_message'),
@@ -43,8 +49,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
                             text: t('unmark'),
                             style: 'destructive',
                             onPress: () => {
-                                newTempPayments.delete(monthId);
-                                setTempPayments(newTempPayments);
+                                setTempLastPaidMonth(getPreviousMonth(monthId));
                             },
                         },
                     ]
@@ -56,21 +61,13 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
                 );
             }
         } else {
-            for (let i = 1; i <= monthNum; i++) {
-                const currentMonthId = `${monthYear}-${String(i).padStart(2, '0')}`;
-                newTempPayments.add(currentMonthId);
-            }
-            setTempPayments(newTempPayments);
+            setTempLastPaidMonth(monthId);
         }
     };
     
 
     const handleSave = () => {
-        const finalPayments = Array.from(tempPayments).map(month => ({
-            month,
-            date: new Date().toISOString(),
-        }));
-        onSave(finalPayments);
+        onSave(tempLastPaidMonth);
         onClose();
     };
 
@@ -82,11 +79,27 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
         return { id: monthId, name: monthName };
     }), [year]);
 
-    const newPaymentsCount = Array.from(tempPayments).filter(p => !payments.has(p)).length;
+    const newPaymentsCount = useMemo(() => {
+        if (!tempLastPaidMonth) {
+            return 0;
+        }
+        if (!lastPaidMonth) {
+            const [ , month] = tempLastPaidMonth.split('-').map(Number);
+            return month;
+        }
+        if (tempLastPaidMonth > lastPaidMonth) {
+            const [year1, month1] = lastPaidMonth.split('-').map(Number);
+            const [year2, month2] = tempLastPaidMonth.split('-').map(Number);
+            return (year2 - year1) * 12 + (month2 - month1);
+        }
+        return 0;
+
+    }, [tempLastPaidMonth, lastPaidMonth]);
+
 
     const renderMonth = useCallback(({ item }) => {
-        const isOriginallyPaid = payments.has(item.id);
-        const isCurrentlySelected = tempPayments.has(item.id);
+        const isOriginallyPaid = lastPaidMonth && item.id <= lastPaidMonth;
+        const isCurrentlySelected = tempLastPaidMonth && item.id <= tempLastPaidMonth;
         
         let iconName: 'checkmark-circle' | 'ellipse-outline' = 'ellipse-outline';
         let iconColor = textColor;
@@ -119,7 +132,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
                 <Text style={[styles.monthText, textStyle]}>{item.name}</Text>
             </TouchableOpacity>
         );
-    }, [payments, tempPayments, textColor, mutedColor, successColor, paidBackgroundColor, primaryColor, disabledTextColor, handleMonthPress]);
+    }, [lastPaidMonth, tempLastPaidMonth, textColor, mutedColor, successColor, paidBackgroundColor, primaryColor, disabledTextColor, handleMonthPress]);
 
     return (
         <Modal visible={isVisible} animationType="slide" transparent onRequestClose={onClose}>

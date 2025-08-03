@@ -66,8 +66,8 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
       ...formData,
       rentAmount: parseFloat(formData.rentAmount),
       dueDate: 1, 
-      payments: property ? property.payments : [],
       createdAt: property ? property.createdAt : new Date().toISOString(),
+      lastPaidMonth: property ? property.lastPaidMonth : null,
     });
     onClose();
   };
