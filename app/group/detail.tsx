@@ -10,75 +10,29 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
-import { t } from '@/locales/i18n';
+import { t, getLocale } from '@/locales/i18n';
 import { db } from '@/firebase/config';
+import { getPaymentStatus, Property } from '@/utils/paymentCalculations';
+
 
 const getMonthName = (monthStr, short = false) => {
-    const monthKey = new Date(monthStr + '-02').toLocaleString('default', { month: 'long' }).toLowerCase();
+    const [year, monthNum] = monthStr.split('-');
+    const date = new Date(Number(year), Number(monthNum) - 1, 2); // Day 2 to avoid timezone issues
+    const monthKey = date.toLocaleString(getLocale(), { month: 'long' }).toLowerCase();
+    
     const monthNames = short ? t('shortMonths') : t('months');
     return monthNames[monthKey] || monthKey;
 };
 
-const PropertyCard = React.memo(({ item, onOpenPropertyModal, onOpenPaymentModal }) => {
+
+const PropertyCard = React.memo(({ item, onOpenPropertyModal, onOpenPaymentModal }: { item: Property, onOpenPropertyModal: (p: Property) => void, onOpenPaymentModal: (p: Property) => void }) => {
     const cardColor = useThemeColor({}, 'card');
     const primaryColor = useThemeColor({}, 'primary');
     const iconColor = useThemeColor({}, 'icon');
     const overdueChipColor = useThemeColor({ light: '#FFF1F2', dark: '#441920' });
     const overdueChipTextColor = useThemeColor({ light: '#B91C1C', dark: '#FCA5A5' });
 
-    const { status, overdueMonthsList, overpaidMonthsList } = useMemo(() => {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-        
-        const lastPaidYear = item.lastPaidMonth ? parseInt(item.lastPaidMonth.split('-')[0]) : 0;
-        const lastPaidMonthNum = item.lastPaidMonth ? parseInt(item.lastPaidMonth.split('-')[1]) : 0;
-
-        const overdue = [];
-        const overpaid = [];
-        
-        // Calculate overdue months
-        let startYear = item.createdAt ? new Date(item.createdAt).getFullYear() : currentYear;
-        let startMonth = item.createdAt ? new Date(item.createdAt).getMonth() + 1 : 1;
-
-        if (item.lastPaidMonth) {
-            startYear = lastPaidYear;
-            startMonth = lastPaidMonthNum + 1;
-            if (startMonth > 12) {
-                startMonth = 1;
-                startYear++;
-            }
-        }
-        
-        for (let y = startYear; y <= currentYear; y++) {
-            const mStart = (y === startYear) ? startMonth : 1;
-            const mEnd = (y < currentYear) ? 12 : currentMonth;
-            for (let m = mStart; m <= mEnd; m++) {
-                overdue.push(`${y}-${String(m).padStart(2, '0')}`);
-            }
-        }
-
-        // Calculate overpaid months
-        if (lastPaidYear > currentYear || (lastPaidYear === currentYear && lastPaidMonthNum > currentMonth)) {
-            let y = currentYear;
-            let m = currentMonth + 1;
-            while(y < lastPaidYear || (y === lastPaidYear && m <= lastPaidMonthNum)) {
-                overpaid.push(`${y}-${String(m).padStart(2, '0')}`);
-                m++;
-                if (m > 12) {
-                    m = 1;
-                    y++;
-                }
-            }
-        }
-        
-        let currentStatus;
-        if (overdue.length > 0) currentStatus = { text: t('overdue'), color: '#EF4444' };
-        else if (overpaid.length > 0) currentStatus = { text: t('overpaid'), color: '#10B981' };
-        else currentStatus = { text: t('paid'), color: Colors.light.primary };
-        
-        return { status: currentStatus, overdueMonthsList: overdue, overpaidMonthsList: overpaid };
-    }, [item.lastPaidMonth, item.createdAt, t]);
+    const { status, overdueMonthsList, overpaidMonthsList } = useMemo(() => getPaymentStatus(item), [item, t]);
 
     const handleCall = (mobileNumber) => {
         if (!mobileNumber) return;
@@ -183,7 +137,7 @@ export default function GroupDetailScreen() {
     const [sections, setSections] = useState([]);
     const [isPropertyModalVisible, setIsPropertyModalVisible] = useState(false);
     const [isPaymentModalVisible, setIsPaymentModalVisible] = useState(false);
-    const [selectedProperty, setSelectedProperty] = useState(null);
+    const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
     const router = useRouter();
 
     const textColor = useThemeColor({}, 'text');
@@ -200,16 +154,15 @@ export default function GroupDetailScreen() {
                     setGroup(currentGroup);
 
                     if (currentGroup && currentGroup.properties) {
-                        const due = [], paid = [], overpaid = [];
-                        currentGroup.properties.forEach(p => {
-                            const today = new Date();
-                            const currentMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-                            if (!p.lastPaidMonth || p.lastPaidMonth < currentMonthStr) {
+                        const due: Property[] = [], paid: Property[] = [], overpaid: Property[] = [];
+                        currentGroup.properties.forEach((p: Property) => {
+                            const { status } = getPaymentStatus(p);
+                            if(status.text === t('overdue')) {
                                 due.push(p);
-                            } else if (p.lastPaidMonth > currentMonthStr) {
+                            } else if (status.text === t('overpaid')) {
                                 overpaid.push(p);
                             } else {
-                                paid.push(p);
+                                paid.push(p)
                             }
                         });
                         
@@ -248,18 +201,18 @@ export default function GroupDetailScreen() {
         }
     };
     
-    const handleSaveProperty = (property) => {
+    const handleSaveProperty = (property: Property) => {
         if (!group) return;
-        const updatedProperties = selectedProperty
+        const updatedProperties = selectedProperty && selectedProperty.id
           ? group.properties.map(p => (p.id === property.id ? property : p))
-          : [...group.properties, { ...property, createdAt: new Date().toISOString() }];
+          : [...group.properties, { ...property, id: `${Date.now()}`, createdAt: new Date().toISOString() }];
         
         updateFirestoreLocations({ ...group, properties: updatedProperties });
         setIsPropertyModalVisible(false);
         setSelectedProperty(null);
     };
     
-    const handleDeleteProperty = (propertyId) => {
+    const handleDeleteProperty = (propertyId: string) => {
         if (!group) return;
         const updatedProperties = group.properties.filter(p => p.id !== propertyId);
         updateFirestoreLocations({ ...group, properties: updatedProperties });
@@ -267,7 +220,7 @@ export default function GroupDetailScreen() {
         setSelectedProperty(null);
     };
     
-    const handleSavePayments = (newLastPaidMonth) => {
+    const handleSavePayments = (newLastPaidMonth: string | null) => {
         if (!group || !selectedProperty) return;
         const updatedProperties = group.properties.map(p => 
           p.id === selectedProperty.id ? { ...p, lastPaidMonth: newLastPaidMonth } : p
@@ -275,17 +228,17 @@ export default function GroupDetailScreen() {
         updateFirestoreLocations({ ...group, properties: updatedProperties });
     };
 
-    const openPropertyModal = useCallback((property) => {
+    const openPropertyModal = useCallback((property: Property | null) => {
         setSelectedProperty(property);
         setIsPropertyModalVisible(true);
     }, []);
     
-    const openPaymentModal = useCallback((property) => {
+    const openPaymentModal = useCallback((property: Property) => {
         setSelectedProperty(property);
         setIsPaymentModalVisible(true);
     }, []);
 
-    const renderProperty = useCallback(({ item }) => (
+    const renderProperty = useCallback(({ item }: { item: Property }) => (
         <PropertyCard 
             item={item} 
             onOpenPropertyModal={openPropertyModal} 

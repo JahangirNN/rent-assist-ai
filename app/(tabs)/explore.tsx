@@ -1,15 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View, Pressable, Linking, Alert } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { getLocale, t } from '@/locales/i18n';
 import { db } from '@/firebase/config';
+import { getPaymentStatus, Property } from '@/utils/paymentCalculations';
+
 
 export default function ExploreScreen() {
   const [locations, setLocations] = useState([]);
@@ -18,78 +19,39 @@ export default function ExploreScreen() {
   const mutedColor = useThemeColor({light: '#F3F4F6', dark: '#374151'});
   const primaryColor = useThemeColor({}, 'primary');
 
-  const getOverdueDetails = (property) => {
-    const today = new Date();
-    const propertyStartDate = property.createdAt ? new Date(property.createdAt) : new Date(today.getFullYear(), 0, 1);
-
-    const sortedPayments = [...property.payments].sort((a, b) => b.month.localeCompare(a.month));
-    const lastPaidMonthStr = sortedPayments.length > 0 ? sortedPayments[0].month : null;
-
-    let firstOverdueDate;
-    if (lastPaidMonthStr) {
-        const [year, month] = lastPaidMonthStr.split('-').map(Number);
-        firstOverdueDate = new Date(year, month, 1);
-    } else {
-        firstOverdueDate = propertyStartDate;
-    }
-
-    let overdueMonthsCount = 0;
-    let checkDate = new Date(firstOverdueDate);
-
-    while (checkDate < today) {
-        const year = checkDate.getFullYear();
-        const month = checkDate.getMonth();
-        const isPastDue = (today.getFullYear() > year || 
-                          (today.getFullYear() === year && today.getMonth() > month)) ||
-                          (today.getFullYear() === year && today.getMonth() === month && today.getDate() > (property.dueDate || 1));
-
-        if (isPastDue) {
-            overdueMonthsCount++;
+  
+  useEffect(() => {
+    setLoading(true);
+    const docRef = doc(db, "rentaData", "userProfile");
+    const unsubscribe = onSnapshot(docRef, (doc) => {
+        if (doc.exists()) {
+            setLocations(doc.data().locations || []);
+        } else {
+            setLocations([]);
         }
-        checkDate.setMonth(checkDate.getMonth() + 1);
-    }
-    
-    const totalOverdueAmount = overdueMonthsCount * (property.rentAmount || 0);
-    const firstOverdueMonthName = new Date(firstOverdueDate).toLocaleString(getLocale(), { month: 'long', year: 'numeric' });
-
-    return { 
-        monthsDue: overdueMonthsCount,
-        totalOverdueAmount,
-        firstOverdueMonth: firstOverdueMonthName
-    };
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      setLoading(true);
-      const docRef = doc(db, "rentaData", "userProfile");
-      const unsubscribe = onSnapshot(docRef, (doc) => {
-          if (doc.exists()) {
-              setLocations(doc.data().locations || []);
-          } else {
-              setLocations([]);
-          }
-          setLoading(false);
-      }, (error) => {
-          console.error('Failed to load dashboard data.', error);
-          setLoading(false);
-      });
-      return () => unsubscribe();
-    }, [])
-  );
+        setLoading(false);
+    }, (error) => {
+        console.error('Failed to load dashboard data.', error);
+        setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [])
 
   const overdueProperties = useMemo(() => {
-    let overdue = [];
-    locations.forEach(group => {
-      group.properties.forEach(property => {
-        const { monthsDue, totalOverdueAmount, firstOverdueMonth } = getOverdueDetails(property);
-        if (monthsDue > 0) {
+    let overdue: (Property & { groupName: string, monthsDue: number, totalOverdueAmount: number, firstOverdueMonth: string })[] = [];
+    (locations || []).forEach(group => {
+      (group.properties || []).forEach((property: Property) => {
+        const { overdueMonthsCount, totalOverdueAmount, overdueMonthsList } = getPaymentStatus(property);
+        if (overdueMonthsCount > 0) {
+
+          const firstOverdueMonthName = new Date(overdueMonthsList[0]).toLocaleString(getLocale(), { month: 'long', year: 'numeric' });
+
           overdue.push({ 
             ...property, 
             groupName: group.name,
-            monthsDue,
+            monthsDue: overdueMonthsCount,
             totalOverdueAmount,
-            firstOverdueMonth
+            firstOverdueMonth: firstOverdueMonthName
           });
         }
       });
@@ -139,7 +101,7 @@ export default function ExploreScreen() {
             </View>
         </View>
         <ThemedText style={styles.sinceDate}>
-            {item.firstOverdueMonth} {t('since_date')}
+           {t('since_date')} {item.firstOverdueMonth} 
         </ThemedText>
 
         {item.tenantMobile && (

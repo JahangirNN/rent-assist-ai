@@ -6,7 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { useAudioRecorder, useAudioRecorderState, AudioModule, setAudioModeAsync, RecordingPresets } from 'expo-audio';
 import * as FileSystem from 'expo-file-system';
-import { doc, onSnapshot, setDoc, Unsubscribe } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc, Unsubscribe } from 'firebase/firestore';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -18,6 +18,14 @@ import { db } from '@/firebase/config';
 const CHAT_HISTORY_KEY = 'chatHistory';
 
 type Status = 'idle' | 'recording' | 'thinking' | 'no_permission';
+
+type UpdateCommand = {
+    action: "updateLastPaidMonth";
+    tenantName: string;
+    locationName: string;
+    shopName?: string;
+    newLastPaidMonth: string;
+};
 
 const ChatHeader = memo(({ isMuted, onToggleMute }: { isMuted: boolean, onToggleMute: () => void }) => {
     const headerColor = useThemeColor({}, 'header');
@@ -33,7 +41,7 @@ const ChatHeader = memo(({ isMuted, onToggleMute }: { isMuted: boolean, onToggle
     );
 });
 
-const ChatBubble = memo(({ item, isUser }: { item: any; isUser: boolean }) => {
+const ChatBubble = memo(({ item, isUser, onConfirmUpdate, onDenyUpdate }: { item: any; isUser: boolean; onConfirmUpdate?: (data: UpdateCommand) => void; onDenyUpdate?: (data: UpdateCommand) => void }) => {
     const primaryColor = useThemeColor({}, 'primary');
     const cardColor = useThemeColor({}, 'card');
     const textColor = useThemeColor({}, 'text');
@@ -52,12 +60,50 @@ const ChatBubble = memo(({ item, isUser }: { item: any; isUser: boolean }) => {
     const bubbleStyle = isUser ? styles.userBubble : styles.aiBubble;
     const textStyle = isUser ? styles.userText : [styles.aiText, { color: textColor }];
 
+    let isConfirmationRequest = false;
+    let confirmationData: UpdateCommand | null = null;
+
+    // Check if the AI response is a JSON update command
+    if (item.type === 'ai' && typeof item.text === 'string' && item.text.trim().startsWith('{')) {
+        try {
+            const parsed = JSON.parse(item.text);
+            if (parsed && parsed.action === "updateLastPaidMonth") {
+                isConfirmationRequest = true;
+                confirmationData = parsed as UpdateCommand;
+            }
+        } catch (e) {
+            // Not JSON, or invalid JSON, treat as normal text
+            console.warn("Failed to parse AI response as JSON:", e);
+        }
+    }
+
     return (
         <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
             <View style={[styles.chatItem, isUser ? styles.userItem : styles.aiItem]}>
                 <View style={[styles.bubble, bubbleStyle, { backgroundColor: bubbleColor }]}>
                     {item.isLoading ? (
                         <ActivityIndicator color={isUser ? 'white' : textColor} />
+                    ) : isConfirmationRequest && confirmationData ? (
+                        // Render confirmation UI
+                        <View>
+                            <Text style={textStyle}>
+                                {confirmationData.tenantName} ({confirmationData.shopName || confirmationData.locationName}) का पिछला भुगतान {confirmationData.newLastPaidMonth} तक का है। क्या आप इसे अपडेट करना चाहते हैं?
+                            </Text>
+                            <View style={styles.confirmationButtons}>
+                                <Pressable
+                                    style={[styles.confirmButton, { backgroundColor: primaryColor }]}
+                                    onPress={() => onConfirmUpdate && onConfirmUpdate(confirmationData)}
+                                >
+                                    <Text style={styles.buttonText}>हाँ</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.denyButton, { backgroundColor: '#F87171' }]}
+                                    onPress={() => onDenyUpdate && onDenyUpdate(confirmationData)}
+                                >
+                                    <Text style={styles.buttonText}>नहीं</Text>
+                                </Pressable>
+                            </View>
+                        </View>
                     ) : (
                         <Text style={textStyle}>{item.text}</Text>
                     )}
@@ -173,19 +219,71 @@ export default function AiAssistantScreen() {
     const model = useMemo(() => {
         if (!genAI) return null;
         return genAI.getGenerativeModel({
-            model: "gemini-2.0-flash", 
+            model: "gemini-2.0-flash", // Strictly maintaining gemini-2.0-flash
             generationConfig: {
                 temperature: 0.5,
             }
         });
     }, [genAI]);
     
+    const handleUpdateLastPaidMonth = useCallback(async (tenantName: string, locationName: string, newLastPaidMonth: string) => {
+        try {
+            console.log(`Attempting to update lastPaidMonth for tenant "${tenantName}" in location "${locationName}" to "${newLastPaidMonth}"`);
+            
+            const docRef = doc(db, "rentaData", "userProfile");
+            const docSnap = await getDoc(docRef);
+
+            if (!docSnap.exists()) {
+                console.error("Document 'rentaData/userProfile' does not exist.");
+                Alert.alert("Error", "Could not find user profile document.");
+                return;
+            }
+
+            const currentData = docSnap.data();
+            let updatedLocations = [...(currentData.locations || [])]; 
+
+            const locationIndex = updatedLocations.findIndex((loc: any) => loc.name.trim() === locationName.trim());
+            
+            if (locationIndex === -1) {
+                console.error(`Location with name "${locationName.trim()}" not found.`);
+                Alert.alert("Error", `Location "${locationName.trim()}" not found.`);
+                return;
+            }
+
+            const propertyIndex = updatedLocations[locationIndex].properties.findIndex((prop: any) => prop.tenantName.trim() === tenantName.trim());
+
+            if (propertyIndex === -1) {
+                console.error(`Tenant "${tenantName.trim()}" not found in location "${locationName.trim()}".`);
+                Alert.alert("Error", `Tenant "${tenantName.trim()}" not found.`);
+                return;
+            }
+
+            updatedLocations[locationIndex].properties[propertyIndex].lastPaidMonth = newLastPaidMonth;
+
+            const updatedDocumentData = {
+                ...currentData,
+                locations: updatedLocations
+            };
+
+            await setDoc(docRef, updatedDocumentData);
+            
+            setPropertyData(updatedDocumentData);
+
+            console.log("Firestore document updated successfully!");
+            Alert.alert("Success", "Last paid month updated.");
+
+        } catch (error) {
+            console.error("Error updating lastPaidMonth:", error);
+            Alert.alert("Error", "Failed to update last paid month.");
+        }
+    }, []); 
+
     const fetchAiResponse = useCallback(async ({ audioUri, text }: { audioUri?: string; text?: string }) => {
         if ((!audioUri && !text) || !propertyData || !model) {
             setStatus('idle');
             return;
         }
-    
+
         setStatus('thinking');
         const thinkingMessage = { type: 'ai', text: '...', isLoading: true, timestamp: new Date() };
         setChatHistory(prev => [...prev, thinkingMessage]);
@@ -193,64 +291,83 @@ export default function AiAssistantScreen() {
         try {
             const today = new Date().toLocaleDateString('en-CA');
             const formattedHistory = chatHistoryRef.current.filter(item => !item.isLoading).map(msg => `${msg.type === 'user' ? 'User' : 'Assistant'}: ${msg.text}`).join('\n');
-            const prompt = `You are a specialized AI assistant for a property manager. Also advice and formally chat with the your employer.
-    
-                ### PREVIOUS CONVERSATION HISTORY ###
-                ${formattedHistory}
-    
-                ### 📜 PRIMARY DIRECTIVE: SCRIPT AND FORMATTING 📜 ###
-                Your two most important rules are:
-                1.  **HINDI SCRIPT ONLY:** Respond ONLY in pure Hindi, using the Devanagari script (हिन्दी देवनागरी लिपि). Do not use English letters (no Hinglish).
-                2.  **TTS-FRIENDLY TEXT ONLY:** Your response must be plain text, suitable for a basic text-to-speech (TTS) engine.
-                    -   **DO NOT USE** any special characters like *, #, _, -, or any markdown formatting. These symbols can be read aloud and sound robotic. [13]
-                    -   Use only commas (,) for short pauses and full stops (.) to end sentences. This helps the speech engine sound more natural. [4, 5]
-                    -   Write short, simple sentences. Long sentences can sound unnatural when read by a TTS engine. [1]
-                    -   The final output must be clean, plain text.
-    
-                ### KNOWLEDGE AND SCOPE ###
-                1.  Your knowledge is strictly limited to the property data provided below.
-                2.  Do not use any external information.
-                3.  Today's date is: ${today}. This is the most important date for all calculations.
-                4.  Property Data: ${JSON.stringify(propertyData, null, 2)}
-    
-                ### 🧠 MENTAL WALKTHROUGH: INTERNAL CALCULATION ###
-                Before responding, you MUST ALWAYS perform these calculations internally to understand the situation. This is your private thought process.
-                1.  **Find Last Paid Month:** Check the 'payments' array to find the latest month paid.
-                2.  **Determine Due Period:** Identify the start and end months for which rent is due. The start is the month *after* the last paid month. The end is the current month based on today's date (${today}).
-                3.  **Count Unpaid Months:** Count the number of months in the due period one-by-one to avoid errors.
-                4.  **Calculate Total Due:** Multiply the count of unpaid months by the 'rentAmount'.
-    
-                ### 🎯 YOUR TASK: Understand Intent and Respond Appropriately 🎯 ###
-                Your main task is to first understand the user's question and then provide an answer with the right level of detail, following the TTS-friendly formatting rules. Choose one of the following two response modes.
-    
-                ---
-                #### Response Mode 1: Direct Answer (संक्षिप्त जवाब)
-                Use this mode if the user asks a specific, direct question. The answer must be short, to the point, and in clean plain text.
-    
-                *   **User Question Example:** "क्या रमेश ने जुलाई २०२५ का भाड़ा दिया है?"
-                *   **Your Correct TTS-Friendly Response (if paid):** "जी, रमेश ने जुलाई २०२५ का भाड़ा दे दिया है।"
-                *   **Your Correct TTS-Friendly Response (if not paid):** "नहीं, रमेश का जुलाई २०२५ का भाड़ा बाकी है।"
-    
-                ---
-                #### Response Mode 2: Detailed Summary (विस्तृत जवाब)
-                Use this mode if the user asks a general question about rent status or total dues. This response should include the full calculation, presented as simple, clean sentences.
-    
-                *   **User Question Example:** "रमेश का क्या हिसाब है?"
-                *   **Your Correct TTS-Friendly Response:** "रमेश का किराया सितंबर २०२५ से दिसंबर २०२५ तक का बाकी है। कुल चार महीने से किराया नहीं दिया है। इसलिए कुल बीस हजार रुपये लेने हैं।"
-    
-                *   **If no rent is due for a tenant asked about in detail, respond:** "रमेश का कोई किराया बाकी नहीं है। सभी भुगतान समय पर हैं।"
-                ---
-    
-                ### FINAL INSTRUCTION ###
-                Now, please respond to the user's question.
-                1.  First, perform your internal calculation.
-                2.  Second, identify the user's intent.
-                3.  Finally, provide the correct style of response in **pure Devanagari Hindi** and ensure the output is **clean plain text with no special characters**, suitable for a text-to-speech engine.
-            `;
             
+            const sanitizedPropertyData = {
+                locations: propertyData.locations.map((location: any) => ({
+                    ...location,
+                    properties: location.properties.map((property: any) => {
+                        const { api, dueDate, ...restOfProperty } = property; 
+                        return restOfProperty;
+                    })
+                }))
+            };
+
+            const prompt = `
+            You are a specialized AI assistant for a property manager. Your primary role is to understand user queries about rent, provide accurate summaries, and process rent payment updates.
+
+            ### PREVIOUS CONVERSATION HISTORY ###
+            ${formattedHistory}
+
+            ### 📜 PRIMARY DIRECTIVE: SCRIPT AND FORMATTING 📜 ###
+            Your two most important rules are:
+            1.  **HINDI SCRIPT ONLY:** Respond ONLY in pure Hindi, using the Devanagari script (हिन्दी देवनागरी लिपि). Do not use English letters (no Hinglish).
+            2.  **TTS-FRIENDLY TEXT ONLY:** Your response must be plain text, suitable for a basic text-to-speech (TTS) engine.
+                -   **DO NOT USE** any special characters like *, #, _, -, or any markdown formatting.
+                -   Use only commas (,) for short pauses and full stops (.) to end sentences. This helps the speech engine sound more natural.
+                -   Write short, simple sentences.
+
+            ### KNOWLEDGE AND SCOPE ###
+            1.  Your knowledge is strictly limited to the property data provided below.
+            2.  Do not use any external information.
+            3.  Today's date is: ${today}. This is the most important date for all calculations.
+            4.  Property Data: ${JSON.stringify(sanitizedPropertyData, null, 2)}
+
+            ### 🎯 YOUR TASK: Understand Intent and Respond Appropriately 🎯 ###
+            Your main task is to understand the user's intent. You have two primary functions: providing information and updating payment records.
+
+            ---
+            #### Function 1: Update Rent Payment Records ####
+
+            If the user provides information about a rent payment, your goal is to generate a JSON command for the system to process.
+
+            **1. Keyword Recognition for Rent Payments:**
+            To understand the user's intent to update rent, you MUST recognize various words for "rent" and "payment" in Hindi and Gujarati. Pay close attention to these words and their variations:
+            *   **Words for Rent:** किराया (kiraya), भाड़ा (bhada), ભાડું (bhadu).
+            *   **Words for 'Paid' or 'Gave':** दिया (diya), दे दिया है (de diya hai), चुका दिया है (chuka diya hai), जमा किया (jama kiya), भर दिया (bhar diya), આપ્યું (aapyu), ભરી દીધું છે (bhari didhu chhe).
+            *   **Example User Phrases:** "Rafik ne 3 mahine ka bhada de diya hai" or "रमेश का २ महीने का किराया आ गया है". Both mean rent has been paid.
+
+            **2. Calculation and Identification:**
+            *   Based on these keywords, identify the tenant by matching their tenantName and locationName from the property data.
+            *   Calculate the new 'lastPaidMonth' based on their current lastPaidMonth and the user's statement (e.g., if lastPaidMonth is "2025-03" and user says "paid for 3 months", the new month is "2025-06").
+
+            **3. Output Format (Strictly Enforced):**
+            *   If you can confidently identify the tenant, location, and the new lastPaidMonth, you **MUST** respond **ONLY** with a JSON object.
+            *   **DO NOT** include any conversational text, greetings, or explanations with the JSON. Your entire response must be the JSON object itself.
+            *   **JSON Format:** \`{"action": "updateLastPaidMonth", "tenantName": "TENANT_NAME", "locationName": "LOCATION_NAME", "shopName": "SHOP_NAME", "newLastPaidMonth": "YYYY-MM"}\`
+
+            *   If the user's statement is unclear or you cannot find an exact match for the tenant/location, **DO NOT** output JSON. Instead, respond with a clarifying question in Hindi as per Function 2.
+
+            ---
+            #### Function 2: Provide Information ####
+
+            If the user's request is not a payment update, provide an answer in clean, TTS-friendly Hindi.
+
+            *   **Direct Questions:** Answer with short, simple sentences.
+                *   *User:* "क्या रमेश ने जुलाई २०२५ का भाड़ा दिया है?"
+                *   *Your Response:* "जी, रमेश ने जुलाई २०२५ का भाड़ा दे दिया है।"
+
+            *   **General Summaries:** Provide a detailed summary with full sentences.
+                *   *User:* "रमेश का क्या हिसाब है?"
+                *   *Your Response:* "रमेश का किराया सितंबर २०२५ से दिसंबर २०२५ तक का बाकी है। कुल चार महीने से किराया नहीं दिया है। इसलिए कुल बीस हजार रुपये लेने हैं।"
+
+            ### FINAL INSTRUCTION ###
+            Analyze the user's latest message. First, determine if it is a payment update command. If yes, and you are confident, respond with only the JSON. If no, or if you are uncertain, respond with a helpful, conversational answer in pure, TTS-friendly Hindi.
+        `;
+        
             let result;
             if (audioUri) {
                 const audioBase64 = await FileSystem.readAsStringAsync(audioUri, { encoding: FileSystem.EncodingType.Base64 });
+                if (audioBase64.length < 1000) throw new Error("Recorded audio file is too small or empty.");
                 const fileExtension = audioUri.split('.').pop();
                 const mimeType = `audio/${fileExtension}`;
                 result = await model.generateContent([prompt, { inlineData: { mimeType, data: audioBase64 } }]);
@@ -259,28 +376,51 @@ export default function AiAssistantScreen() {
             }
             
             const responseText = result.response.text();
+
+            let updateCommand: UpdateCommand | null = null;
+
+            try {
+                if (responseText.trim().startsWith('{"action": "updateLastPaidMonth"')) {
+                    const parsed = JSON.parse(responseText);
+                    if (parsed && parsed.action === "updateLastPaidMonth") {
+                        updateCommand = parsed as UpdateCommand;
+                    }
+                }
+            } catch (parseError) {
+                console.warn("AI response is not a valid JSON update command or parsing failed:", parseError);
+            }
             
-            if (!isMutedRef.current) Speech.speak(responseText, { language: 'hi-IN', pitch: 1.0, rate: 0.9 });
-            
-            // --- THIS IS THE FIX ---
+            // --- Update UI state first ---
+            // This will add the AI's response to the chat history.
+            // If it's a JSON command, the ChatBubble will render buttons.
             setChatHistory(prev => [
-                ...prev.filter(item => !item.isLoading), // Remove all loading bubbles
-                { type: 'ai', text: responseText, timestamp: new Date() } // Add the new response
+                ...prev.filter(item => !item.isLoading), // Remove any pending loading states
+                { type: 'ai', text: responseText, timestamp: new Date() } // Add the AI's response (could be JSON or Hindi text)
             ]);
-    
+
+            // --- Speak the response AFTER UI update (if it's normal Hindi text) ---
+            if (!isMutedRef.current && !updateCommand) { 
+                Speech.speak(responseText, { language: 'hi-IN', pitch: 1.0, rate: 0.9 });
+            }
+
         } catch (error) {
+            console.error("Error in fetchAiResponse:", error);
             const errorMessage = "माफ़ कीजिए, मुझे जवाब देने में कोई समस्या हुई।";
             
-            // --- THIS IS THE FIX FOR THE ERROR CASE ---
+            // Ensure loading bubble is removed and replaced with error message
             setChatHistory(prev => [
-                ...prev.filter(item => !item.isLoading), // Remove all loading bubbles
-                { type: 'ai', text: errorMessage, timestamp: new Date() } // Add the new error message
+                ...prev.filter(item => !item.isLoading), 
+                { type: 'ai', text: errorMessage, timestamp: new Date() }
             ]);
+            
+            if (!isMutedRef.current) {
+                Speech.speak(errorMessage, { language: 'hi-IN', pitch: 1.0, rate: 0.9 });
+            }
         } finally {
             setStatus('idle');
         }
-    }, [model, propertyData]);
-    
+    }, [model, propertyData, handleUpdateLastPaidMonth, isMutedRef]);
+
     const startRecording = useCallback(async () => {
         if (!hasPermission) {
             Alert.alert("Microphone Permission", "Please grant microphone access in your device settings.");
@@ -333,7 +473,28 @@ export default function AiAssistantScreen() {
     }, [textInput, fetchAiResponse]);
 
     const onToggleMute = useCallback(() => setIsMuted(prev => !prev), []);
-    const renderChatItem = useCallback(({ item }: { item: any }) => <ChatBubble item={item} isUser={item.type === 'user'} />, []);
+    
+    const renderChatItem = useCallback(({ item }: { item: any }) => (
+        <ChatBubble 
+            item={item} 
+            isUser={item.type === 'user'} 
+            onConfirmUpdate={(data) => {
+                console.log("User confirmed update:", data);
+                // Call the Firestore update function with trimmed data
+                handleUpdateLastPaidMonth(data.tenantName.trim(), data.locationName.trim(), data.newLastPaidMonth);
+                // Remove the confirmation UI from chat history
+                setChatHistory(prev => prev.filter(msg => msg.timestamp !== item.timestamp));
+                // Optionally, add a confirmation message to chat
+                setChatHistory(prev => [...prev, { type: 'ai', text: `${data.tenantName} का lastPaidMonth ${data.newLastPaidMonth} पर अपडेट कर दिया गया है।`, timestamp: new Date() }]);
+            }} 
+            onDenyUpdate={(data) => {
+                console.log("User denied update:", data);
+                // Remove the confirmation UI
+                setChatHistory(prev => prev.filter(msg => msg.timestamp !== item.timestamp));
+                // Optionally, send a "No" message to AI or just let it be
+            }}
+        />
+    ), [handleUpdateLastPaidMonth]); 
     
     const isMicDisabled = status === 'thinking' || !hasPermission || !geminiApiKey;
     const isRecording = status === 'recording' && recorderState.isRecording;
@@ -402,4 +563,23 @@ const styles = StyleSheet.create({
     micButton: { width: 55, height: 55, borderRadius: 27.5, justifyContent: 'center', alignItems: 'center' },
     statusText: { textAlign: 'center', paddingBottom: 5, fontSize: 12, color: '#9CA3AF' },
     timestamp: { fontSize: 10, color: '#9CA3AF', marginTop: 5, textAlign: 'right', paddingRight: 5 },
+    confirmationButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginTop: 10,
+    },
+    confirmButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 15,
+        borderRadius: 5,
+    },
+    denyButton: {
+        paddingVertical: 8,
+        paddingHorizontal: 15,
+        borderRadius: 5,
+    },
+    buttonText: {
+        color: 'white',
+        fontWeight: 'bold',
+    }
 });

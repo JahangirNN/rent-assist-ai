@@ -78,6 +78,7 @@
     "you_are_paying_for": "You are paying for",
     "unmark_payment_confirm_title": "Confirm Unmarking",
     "unmark_payment_confirm_message": "Are you sure you want to unmark this payment? This will also unmark any subsequent payments for this year.",
+    "unmark_payment_confirm_message_new": "This will remove the payment data for {{count}} month. Are you sure?",
     "unmark": "Unmark",
     "unmarking_not_allowed_title": "Action Not Allowed",
     "unmarking_not_allowed_message": "You must unmark payments in reverse chronological order. Please unmark later months first.",

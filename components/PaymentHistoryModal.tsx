@@ -5,8 +5,9 @@ import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t } from '@/locales/i18n';
+import { Property } from '@/utils/paymentCalculations';
 
-function getPreviousMonth(monthId) {
+function getPreviousMonth(monthId: string | null): string | null {
     if (!monthId) return null;
     const [year, month] = monthId.split('-').map(Number);
     if (month === 1) {
@@ -15,7 +16,7 @@ function getPreviousMonth(monthId) {
     return `${year}-${String(month - 1).padStart(2, '0')}`;
 }
 
-export default function PaymentHistoryModal({ isVisible, onClose, property, onSave }) {
+export default function PaymentHistoryModal({ isVisible, onClose, property, onSave }: { isVisible: boolean, onClose: () => void, property: Property | null, onSave: (newLastPaidMonth: string | null) => void }) {
     if (!property) return null;
 
     const [year, setYear] = useState(new Date().getFullYear());
@@ -25,6 +26,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
     useEffect(() => {
         setLastPaidMonth(property.lastPaidMonth);
         setTempLastPaidMonth(property.lastPaidMonth);
+        setYear(new Date().getFullYear());
     }, [isVisible, property]);
 
     const cardColor = useThemeColor({}, 'card');
@@ -35,31 +37,31 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
     const paidBackgroundColor = useThemeColor({ light: '#F0FDF4', dark: '#16221A'});
     const disabledTextColor = useThemeColor({ light: '#6B7280', dark: '#9CA3AF' });
 
-    const handleMonthPress = (monthId) => {
+    const handleMonthPress = (monthId: string) => {
         const isCurrentlySelected = tempLastPaidMonth && monthId <= tempLastPaidMonth;
     
         if (isCurrentlySelected) {
-            if (monthId === tempLastPaidMonth) {
-                Alert.alert(
-                    t('unmark_payment_confirm_title'),
-                    t('unmark_payment_confirm_message'),
-                    [
-                        { text: t('cancel'), style: 'cancel' },
-                        {
-                            text: t('unmark'),
-                            style: 'destructive',
-                            onPress: () => {
-                                setTempLastPaidMonth(getPreviousMonth(monthId));
-                            },
+            const currentLastMonth = tempLastPaidMonth || '';
+            const [lastYear, lastMonth] = currentLastMonth.split('-').map(Number);
+            const [selectedYear, selectedMonth] = monthId.split('-').map(Number);
+            
+            const monthsDiff = (lastYear - selectedYear) * 12 + (lastMonth - selectedMonth);
+            const count = monthsDiff +1;
+
+            Alert.alert(
+                t('unmark_payment_confirm_title'),
+                t('unmark_payment_confirm_message_new', { count }),
+                [
+                    { text: t('cancel'), style: 'cancel' },
+                    {
+                        text: t('unmark'),
+                        style: 'destructive',
+                        onPress: () => {
+                            setTempLastPaidMonth(getPreviousMonth(monthId));
                         },
-                    ]
-                );
-            } else {
-                Alert.alert(
-                    t('unmarking_not_allowed_title'),
-                    t('unmarking_not_allowed_message')
-                );
-            }
+                    },
+                ]
+            );
         } else {
             setTempLastPaidMonth(monthId);
         }
@@ -80,21 +82,21 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
     }), [year]);
 
     const newPaymentsCount = useMemo(() => {
-        if (!tempLastPaidMonth) {
-            return 0;
-        }
-        if (!lastPaidMonth) {
-            const [ , month] = tempLastPaidMonth.split('-').map(Number);
-            return month;
-        }
-        if (tempLastPaidMonth > lastPaidMonth) {
-            const [year1, month1] = lastPaidMonth.split('-').map(Number);
-            const [year2, month2] = tempLastPaidMonth.split('-').map(Number);
-            return (year2 - year1) * 12 + (month2 - month1);
+        if (tempLastPaidMonth === lastPaidMonth) return 0;
+
+        if (tempLastPaidMonth && (!lastPaidMonth || tempLastPaidMonth > lastPaidMonth)) {
+            const start = lastPaidMonth ? new Date(lastPaidMonth.split('-')[0], lastPaidMonth.split('-')[1]) : new Date(property.createdAt || `${year}-01`);
+            const end = new Date(tempLastPaidMonth.split('-')[0], tempLastPaidMonth.split('-')[1]-1);
+            
+            let count = 0;
+            if (end > start) {
+                count = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+            }
+            return Math.max(0, count);
         }
         return 0;
 
-    }, [tempLastPaidMonth, lastPaidMonth]);
+    }, [tempLastPaidMonth, lastPaidMonth, property.createdAt, year]);
 
 
     const renderMonth = useCallback(({ item }) => {
@@ -107,21 +109,20 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
         let buttonStyle: any[] = [styles.monthItem, { borderColor: mutedColor }];
 
         if (isCurrentlySelected) {
-            if (isOriginallyPaid) {
-                // State: Was paid, and is still marked as paid.
+             if (isOriginallyPaid) {
                 iconName = 'checkmark-circle';
                 iconColor = successColor;
                 buttonStyle.push({ backgroundColor: paidBackgroundColor, borderColor: successColor });
-                textStyle = { color: disabledTextColor, textDecorationLine: 'line-through' };
             } else {
-                // State: Was unpaid, now newly selected for payment.
                 iconName = 'checkmark-circle';
                 iconColor = 'white';
                 buttonStyle.push({ backgroundColor: primaryColor, borderColor: primaryColor });
                 textStyle = { color: 'white' };
             }
         } else {
-            // State: Not currently selected (is either unpaid or was just unmarked).
+            if(isOriginallyPaid) {
+                 textStyle = { color: disabledTextColor, textDecorationLine: 'line-through' };
+            }
             iconName = 'ellipse-outline';
             iconColor = disabledTextColor;
         }
@@ -145,7 +146,7 @@ export default function PaymentHistoryModal({ isVisible, onClose, property, onSa
                     <View style={styles.yearSelector}>
                         <TouchableOpacity onPress={() => setYear(y => y - 1)}><Ionicons name="chevron-back" size={28} color={textColor} /></TouchableOpacity>
                         <Text style={[styles.yearText, {color: textColor}]}>{year}</Text>
-                        <TouchableOpacity onPress={() => setYear(y => y + 1)}><Ionicons name="chevron-forward" size={28} color={textColor} /></TouchableOpacity>
+                        <TouchableOpacity onPress={() => setYear(y => y + 1)} disabled={year >= new Date().getFullYear()}><Ionicons name="chevron-forward" size={28} color={year >= new Date().getFullYear() ? disabledTextColor : textColor} /></TouchableOpacity>
                     </View>
                     <FlatList
                         data={months}
