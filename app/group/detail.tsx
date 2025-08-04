@@ -77,6 +77,36 @@ const PropertyCard = React.memo(({ item, onOpenPropertyModal, onOpenPaymentModal
                     </View>
                 </View>
 
+                {item.deposit > 0 && (
+                    <View style={styles.detailItem}>
+                        <Ionicons name="shield-checkmark-outline" size={24} color={iconColor} style={styles.detailIcon} />
+                        <View>
+                            <ThemedText style={styles.detailLabel}>{t('deposit')}</ThemedText>
+                            <ThemedText style={styles.detailValue}>₹{item.deposit ? item.deposit.toFixed(2) : 'N/A'}</ThemedText>
+                        </View>
+                    </View>
+                )}
+
+                {item.maintenanceFee > 0 && (
+                    <View style={styles.detailItem}>
+                        <Ionicons name="construct-outline" size={24} color={iconColor} style={styles.detailIcon} />
+                        <View>
+                            <ThemedText style={styles.detailLabel}>{t('maintenance_fee_optional')}</ThemedText>
+                            <ThemedText style={styles.detailValue}>₹{item.maintenanceFee ? item.maintenanceFee.toFixed(2) : 'N/A'}</ThemedText>
+                        </View>
+                    </View>
+                )}
+
+                {item.otherFees > 0 && (
+                    <View style={styles.detailItem}>
+                        <Ionicons name="receipt-outline" size={24} color={iconColor} style={styles.detailIcon} />
+                        <View>
+                            <ThemedText style={styles.detailLabel}>{t('other_fees_optional')}</ThemedText>
+                            <ThemedText style={styles.detailValue}>₹{item.otherFees ? item.otherFees.toFixed(2) : 'N/A'}</ThemedText>
+                        </View>
+                    </View>
+                )}
+
                 <View style={styles.detailItem}>
                      <Ionicons name="information-circle-outline" size={24} color={iconColor} style={styles.detailIcon} />
                      <View>

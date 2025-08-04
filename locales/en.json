@@ -90,5 +90,11 @@
     "total_pending": "Pending",
     "total_potential": "Potential",
     "no_collections_this_month": "No collections recorded this month.",
-    "potential": "Expected"
+    "potential": "Expected",
+    "last_month_summary_for": "Summary for {{month}}",
+    "total_remaining": "Remaining",
+    "maintenance_fee_optional": "Maintenance Fee (Optional)",
+    "other_fees_optional": "Other Fees (Optional)",
+    "deposit_optional": "Deposit (Optional)",
+    "deposit": "Deposit"
 }

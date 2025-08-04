@@ -2,18 +2,29 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { SafeAreaView, StyleSheet, Modal, View } from 'react-native';
+import { SafeAreaView, StyleSheet, Modal, View, ActivityIndicator } from 'react-native';
 
 // Import Firebase
 import { app } from '../firebase/config';
 import { NetworkProvider, useNetworkContext } from '@/context/NetworkContext';
+import { AppProvider, useApp } from '@/context/AppContext';
 import { OfflineNotice } from '@/components/OfflineNotice';
+import { ThemedView } from '@/components/ThemedView';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { isConnected } = useNetworkContext();
+  const { isLoading } = useApp();
+
+  if (isLoading) {
+    return (
+        <ThemedView style={styles.centeredView}>
+            <ActivityIndicator size="large" />
+        </ThemedView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -52,7 +63,9 @@ export default function RootLayout() {
 
   return (
     <NetworkProvider>
-      <RootLayoutNav />
+        <AppProvider>
+            <RootLayoutNav />
+        </AppProvider>
     </NetworkProvider>
   );
 }

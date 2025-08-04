@@ -219,7 +219,7 @@ export default function AiAssistantScreen() {
     const model = useMemo(() => {
         if (!genAI) return null;
         return genAI.getGenerativeModel({
-            model: "gemini-2.0-flash", // Strictly maintaining gemini-2.0-flash
+            model: "gemini-2.5-flash-lite", // Strictly maintaining gemini-2.0-flash
             generationConfig: {
                 temperature: 0.5,
             }
@@ -301,9 +301,9 @@ export default function AiAssistantScreen() {
                     })
                 }))
             };
-
+            
             const prompt = `
-            You are a specialized AI assistant for a property manager. Your primary role is to understand user queries about rent, provide accurate summaries, and process rent payment updates.
+            You are a specialized AI assistant for a property manager. Your primary role is to understand user queries about rent, provide accurate summaries, and process rent payment updates. You can also chat and greet with your employer.
 
             ### PREVIOUS CONVERSATION HISTORY ###
             ${formattedHistory}

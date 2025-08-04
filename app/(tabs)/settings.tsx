@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Modal, Pressable, TouchableOpacity, FlatList, ActivityIndicator, Text } from 'react-native';
+import { View, StyleSheet, Modal, Pressable, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { setLocale, t } from '@/locales/i18n';
@@ -10,6 +10,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
+import { getMonthlySummary } from '@/utils/paymentCalculations';
 
 export default function SettingsScreen() {
     const [modalVisible, setModalVisible] = useState(false);
@@ -44,32 +45,8 @@ export default function SettingsScreen() {
     );
 
     const financialSummary = useMemo(() => {
-        let totalPotential = 0;
-        let totalCollected = 0;
-        const currentMonthStr = new Date().toISOString().slice(0, 7);
-        
-        const groupsWithCollections = locations.map(group => {
-            let groupTotalCollected = 0;
-            const propertiesWithCollection = group.properties.map(property => {
-                const rentAmount = property.rentAmount || 0;
-                totalPotential += rentAmount;
-                
-                let propertyCollected = 0;
-                if (property.payments && property.payments.some(p => p.month === currentMonthStr)) {
-                    propertyCollected = rentAmount;
-                    totalCollected += rentAmount;
-                    groupTotalCollected += rentAmount;
-                }
-                return { ...property, collectedAmount: propertyCollected };
-            }).filter(p => p.collectedAmount > 0);
-
-            return { ...group, properties: propertiesWithCollection, groupTotal: groupTotalCollected };
-        }).filter(g => g.groupTotal > 0);
-
-        const totalPending = totalPotential - totalCollected;
-        const collectionRate = totalPotential > 0 ? (totalCollected / totalPotential) * 100 : 0;
-
-        return { totalPotential, totalCollected, totalPending, collectionRate, groups: groupsWithCollections };
+        const allProperties = locations.flatMap(group => group.properties);
+        return getMonthlySummary(allProperties);
     }, [locations]);
 
     const languages = [
@@ -87,27 +64,14 @@ export default function SettingsScreen() {
 
     const currentLanguageName = languages.find(lang => lang.code === (t('language') === 'Language' ? 'en' : t('language') === 'ભાષા' ? 'gu' : 'hi'))?.name || 'English';
 
-    const renderProperty = useCallback(({ item }) => (
-        <View style={styles.propertyItem}>
-            <ThemedText style={styles.propertyName}>{item.name}</ThemedText>
-            <Text style={[styles.propertyAmount, { color: primaryColor }]}>₹{item.collectedAmount.toFixed(2)}</Text>
-        </View>
-    ), [primaryColor]);
+    const lastMonthName = useMemo(() => {
+        if (!financialSummary.lastMonthString) return '';
+        const [year, month] = financialSummary.lastMonthString.split('-');
+        const monthIndex = parseInt(month, 10) - 1;
+        const monthNameKey = Object.keys(t('months'))[monthIndex];
+        return t(`months.${monthNameKey}`);
+    }, [financialSummary.lastMonthString]);
 
-    const renderGroup = useCallback(({ item }) => (
-        <View style={[styles.groupCard, { backgroundColor: cardColor }]}>
-            <View style={styles.groupHeader}>
-                <ThemedText type="subtitle" style={styles.groupName}>{item.name}</ThemedText>
-                <ThemedText type="subtitle" style={[styles.groupTotal, { color: primaryColor }]}>₹{item.groupTotal.toFixed(2)}</ThemedText>
-            </View>
-            <FlatList
-                data={item.properties}
-                renderItem={renderProperty}
-                keyExtractor={(property) => property.id}
-                ItemSeparatorComponent={() => <View style={[styles.separator, {backgroundColor: mutedColor}]} />}
-            />
-        </View>
-    ), [cardColor, primaryColor, mutedColor, renderProperty]);
 
     if (loading) {
         return (
@@ -157,11 +121,11 @@ export default function SettingsScreen() {
             <ThemedText type="subtitle" style={styles.sectionHeader}>{t('monthly_collections')}</ThemedText>
             
             <View style={[styles.summaryCard, {backgroundColor: cardColor}]}>
-                <ThemedText type="title" style={styles.summaryTitle}>{t('this_month_summary')}</ThemedText>
+                <ThemedText type="title" style={styles.summaryTitle}>{t('last_month_summary_for', { month: lastMonthName })}</ThemedText>
                 
                 <View style={[styles.summaryMetricRow, {borderColor: mutedColor}]}>
                     <ThemedText style={styles.summaryMetricLabel}>{t('total_potential')}</ThemedText>
-                    <ThemedText style={[styles.summaryMetricValue, {color: primaryColor}]}>₹{financialSummary.totalPotential.toFixed(2)}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: primaryColor}]}>₹{financialSummary.totalRent.toFixed(2)}</ThemedText>
                 </View>
 
                 <View style={[styles.summaryMetricRow, {borderColor: mutedColor}]}>
@@ -169,24 +133,12 @@ export default function SettingsScreen() {
                     <ThemedText style={[styles.summaryMetricValue, {color: successColor}]}>₹{financialSummary.totalCollected.toFixed(2)}</ThemedText>
                 </View>
 
-                <View style={[styles.summaryMetricRow, {borderBottomWidth: 0}]}> 
-                    <ThemedText style={styles.summaryMetricLabel}>{t('total_pending')}</ThemedText>
-                    <ThemedText style={[styles.summaryMetricValue, {color: dangerColor}]}>₹{financialSummary.totalPending.toFixed(2)}</ThemedText>
+                <View style={[styles.summaryMetricRow, {borderBottomWidth: 0, borderColor: mutedColor}]}>
+                    <ThemedText style={styles.summaryMetricLabel}>{t('total_remaining')}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: dangerColor}]}>₹{financialSummary.totalRemaining.toFixed(2)}</ThemedText>
                 </View>
-            </View>
 
-            <FlatList
-                data={financialSummary.groups}
-                renderItem={renderGroup}
-                keyExtractor={(group) => group.id}
-                contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
-                ListEmptyComponent={
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="information-circle-outline" size={40} color={Colors[colorScheme ?? 'light'].text} />
-                        <ThemedText style={{textAlign: 'center', marginTop: 10}}>{t('no_collections_this_month')}</ThemedText>
-                    </View>
-                }
-            />
+            </View>
         </ThemedView>
     );
 }

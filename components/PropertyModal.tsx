@@ -21,6 +21,9 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
     tenantName: '',
     rentAmount: '',
     tenantMobile: '',
+    maintenanceFee: '',
+    otherFees: '',
+    deposit: '',
   });
 
   const primaryColor = useThemeColor({}, 'primary');
@@ -35,6 +38,9 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
         tenantName: property.tenantName || '',
         rentAmount: property.rentAmount ? property.rentAmount.toString() : '',
         tenantMobile: property.tenantMobile || '',
+        maintenanceFee: property.maintenanceFee ? property.maintenanceFee.toString() : '',
+        otherFees: property.otherFees ? property.otherFees.toString() : '',
+        deposit: property.deposit ? property.deposit.toString() : '',
       });
     } else {
       setFormData({
@@ -42,6 +48,9 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
         tenantName: '',
         rentAmount: '',
         tenantMobile: '',
+        maintenanceFee: '',
+        otherFees: '',
+        deposit: '',
       });
     }
   }, [property]);
@@ -65,7 +74,9 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
       id: property ? property.id : Date.now().toString(),
       ...formData,
       rentAmount: parseFloat(formData.rentAmount),
-      dueDate: 1, 
+      maintenanceFee: formData.maintenanceFee ? parseFloat(formData.maintenanceFee) : null,
+      otherFees: formData.otherFees ? parseFloat(formData.otherFees) : null,
+      deposit: formData.deposit ? parseFloat(formData.deposit) : null,
       createdAt: property ? property.createdAt : new Date().toISOString(),
       lastPaidMonth: property ? property.lastPaidMonth : null,
     });
@@ -121,6 +132,30 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
               value={formData.tenantMobile}
               onChangeText={(value) => handleInputChange('tenantMobile', value)}
               keyboardType="phone-pad"
+            />
+            <MemoizedTextInput
+              style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
+              placeholder={t('maintenance_fee_optional')}
+              placeholderTextColor="#9CA3AF"
+              value={formData.maintenanceFee}
+              onChangeText={(value) => handleInputChange('maintenanceFee', value)}
+              keyboardType="numeric"
+            />
+            <MemoizedTextInput
+              style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
+              placeholder={t('other_fees_optional')}
+              placeholderTextColor="#9CA3AF"
+              value={formData.otherFees}
+              onChangeText={(value) => handleInputChange('otherFees', value)}
+              keyboardType="numeric"
+            />
+            <MemoizedTextInput
+              style={[styles.input, {color: textColor, backgroundColor: backgroundColor}]}
+              placeholder={t('deposit_optional')}
+              placeholderTextColor="#9CA3AF"
+              value={formData.deposit}
+              onChangeText={(value) => handleInputChange('deposit', value)}
+              keyboardType="numeric"
             />
             <View style={styles.buttonContainer}>
               {property && (

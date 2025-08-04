@@ -10,6 +10,7 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { getLocale, t } from '@/locales/i18n';
 import { db } from '@/firebase/config';
 import { getPaymentStatus, Property } from '@/utils/paymentCalculations';
+import { generateAndSharePdf } from '@/utils/pdfGenerator';
 
 
 export default function ExploreScreen() {
@@ -124,9 +125,16 @@ export default function ExploreScreen() {
     );
   }
 
+  const allProperties = locations.flatMap(group => group.properties);
+
   return (
     <ThemedView style={styles.container}>
-        <ThemedText type="title" style={styles.title}>{t('dashboard')}</ThemedText>
+        <View style={styles.header}>
+            <ThemedText type="title" style={styles.title}>{t('dashboard')}</ThemedText>
+            <Pressable onPress={() => generateAndSharePdf(allProperties)}>
+                <Ionicons name="download-outline" size={24} color={primaryColor} />
+            </Pressable>
+        </View>
 
         <ThemedText type="subtitle" style={styles.listHeader}>{t('overdue_payments')}</ThemedText>
         <FlatList
@@ -156,9 +164,15 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    title: {
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 20,
+    },
+    title: {
         textAlign: 'center',
+        flex: 1,
     },
     listHeader: {
         marginBottom: 15,
