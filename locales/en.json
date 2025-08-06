@@ -96,5 +96,7 @@
     "maintenance_fee_optional": "Maintenance Fee (Optional)",
     "other_fees_optional": "Other Fees (Optional)",
     "deposit_optional": "Deposit (Optional)",
-    "deposit": "Deposit"
+    "deposit": "Deposit",
+    "property_report": "Property Report",
+    "payment_record": "Payment Record"
 }

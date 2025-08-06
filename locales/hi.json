@@ -96,5 +96,7 @@
     "maintenance_fee_optional": "रखरखाव शुल्क (वैकल्पिक)",
     "other_fees_optional": "अन्य शुल्क (वैकल्पिक)",
     "deposit_optional": "जमा (वैकल्पिक)",
-    "deposit": "जमा"
+    "deposit": "जमा",
+    "property_report": "संपत्ति रिपोर्ट",
+    "payment_record": "भुगतान रिकॉर्ड"
 }

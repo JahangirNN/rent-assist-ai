@@ -96,5 +96,7 @@
     "maintenance_fee_optional": "જાળવણી ફી (વૈકલ્પિક)",
     "other_fees_optional": "અન્ય ફી (વૈકલ્પિક)",
     "deposit_optional": "ડિપોઝિટ (વૈકલ્પિક)",
-    "deposit": "ડિપોઝિટ"
+    "deposit": "ડિપોઝિટ",
+    "property_report": "મિલકત અહેવાલ",
+    "payment_record": "ચુકવણી રેકોર્ડ"
 }

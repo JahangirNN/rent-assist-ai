@@ -15,7 +15,7 @@ export interface Property {
     deposit?: number;
 }
 
-function getIndianStandardTime(): Date {
+export function getIndianStandardTime(): Date {
     const now = new Date();
     // IST is UTC+5:30
     const istOffset = 5.5 * 60 * 60 * 1000;
@@ -55,16 +55,15 @@ export function getPaymentStatus(property: Property) {
 
 
     while (cursorDate < firstDayOfCurrentMonth) {
-        // We consider a month overdue if the current date is past the 1st of that month.
-        // E.g., if today is Feb 2nd, January is overdue. If today is Feb 1st, January is not yet overdue.
-         const monthStr = `${cursorDate.getFullYear()}-${String(cursorDate.getMonth() + 1).padStart(2, '0')}`;
+        const monthStr = `${cursorDate.getFullYear()}-${String(cursorDate.getMonth() + 1).padStart(2, '0')}`;
         overdueMonths.push(monthStr);
         cursorDate.setMonth(cursorDate.getMonth() + 1);
     }
     
     // Calculate Overpaid Months
     if (lastPaidDate) {
-        const overpaidCursor = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        // Start from the current month to include it in overpaid calculations
+        const overpaidCursor = new Date(today.getFullYear(), today.getMonth(), 1);
         
         while (overpaidCursor < lastPaidDate) {
             const monthStr = `${overpaidCursor.getFullYear()}-${String(overpaidCursor.getMonth() + 1).padStart(2, '0')}`;
@@ -83,8 +82,9 @@ export function getPaymentStatus(property: Property) {
         status = { text: t('paid'), color: Colors.light.primary };
     }
     
-    const overdueMonthsCount = overdueMonths.length
-    const totalOverdueAmount = overdueMonthsCount * (property.rentAmount || 0)
+    const overdueMonthsCount = overdueMonths.length;
+    // Reverted to base rent calculation for the overdue PDF
+    const totalOverdueAmount = overdueMonthsCount * (property.rentAmount || 0);
 
 
     return {

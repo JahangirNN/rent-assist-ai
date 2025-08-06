@@ -1,18 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState, useMemo } from 'react';
-import { Alert, SectionList, Pressable, StyleSheet, TouchableOpacity, View, Linking } from 'react-native';
-import { doc, onSnapshot, getDoc, updateDoc } from 'firebase/firestore';
+import { ActivityIndicator, Alert, SectionList, Pressable, StyleSheet, TouchableOpacity, View, Linking } from 'react-native';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 import PaymentHistoryModal from '@/components/PaymentHistoryModal';
 import PropertyModal from '@/components/PropertyModal';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { Colors } from '@/constants/Colors';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { t, getLocale } from '@/locales/i18n';
 import { db } from '@/firebase/config';
+import { updateUserLocations, getUserProfile } from '@/firebase/firestoreService';
 import { getPaymentStatus, Property } from '@/utils/paymentCalculations';
+import { generateLocationPdf } from '@/utils/pdfGenerator';
 
 
 const getMonthName = (monthStr, short = false) => {
@@ -168,6 +169,7 @@ export default function GroupDetailScreen() {
     const [isPropertyModalVisible, setIsPropertyModalVisible] = useState(false);
     const [isPaymentModalVisible, setIsPaymentModalVisible] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+    const [isPdfLoading, setIsPdfLoading] = useState(false);
     const router = useRouter();
 
     const textColor = useThemeColor({}, 'text');
@@ -216,46 +218,77 @@ export default function GroupDetailScreen() {
         }, [groupId, t])
     );
     
-    const updateFirestoreLocations = async (updatedGroup) => {
-        const docRef = doc(db, "rentaData", "userProfile");
-        try {
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const existingLocations = docSnap.data().locations || [];
-                const newLocations = existingLocations.map(loc => loc.id === updatedGroup.id ? updatedGroup : loc);
-                await updateDoc(docRef, { locations: newLocations });
-            }
-        } catch (error) {
-            Alert.alert("Error", "Failed to save changes.");
-            console.error("Firestore update error: ", error);
+    const handleSaveProperty = async (propertyData: Property) => {
+        const userProfile = await getUserProfile();
+        if (!userProfile || !userProfile.locations) {
+            Alert.alert("Error", "Could not load user data to save. Please try again.");
+            return;
         }
-    };
     
-    const handleSaveProperty = (property: Property) => {
-        if (!group) return;
-        const updatedProperties = selectedProperty && selectedProperty.id
-          ? group.properties.map(p => (p.id === property.id ? property : p))
-          : [...group.properties, { ...property, id: `${Date.now()}`, createdAt: new Date().toISOString() }];
-        
-        updateFirestoreLocations({ ...group, properties: updatedProperties });
+        const newLocations = userProfile.locations.map(loc => {
+            if (loc.id === groupId) {
+                const isExistingProperty = loc.properties.some(p => p.id === propertyData.id);
+                let updatedProperties;
+    
+                if (isExistingProperty) {
+                    // Update existing property
+                    updatedProperties = loc.properties.map(p =>
+                        p.id === propertyData.id ? propertyData : p
+                    );
+                } else {
+                    // Add new property
+                    updatedProperties = [...loc.properties, propertyData];
+                }
+                return { ...loc, properties: updatedProperties };
+            }
+            return loc;
+        });
+    
+        await updateUserLocations(newLocations);
         setIsPropertyModalVisible(false);
         setSelectedProperty(null);
     };
     
-    const handleDeleteProperty = (propertyId: string) => {
-        if (!group) return;
-        const updatedProperties = group.properties.filter(p => p.id !== propertyId);
-        updateFirestoreLocations({ ...group, properties: updatedProperties });
+    const handleDeleteProperty = async (propertyId: string) => {
+        const userProfile = await getUserProfile();
+        if (!userProfile || !userProfile.locations) {
+            Alert.alert("Error", "Could not load user data to delete. Please try again.");
+            return;
+        }
+    
+        const newLocations = userProfile.locations.map(loc => {
+            if (loc.id === groupId) {
+                const updatedProperties = loc.properties.filter(p => p.id !== propertyId);
+                return { ...loc, properties: updatedProperties };
+            }
+            return loc;
+        });
+    
+        await updateUserLocations(newLocations);
         setIsPropertyModalVisible(false);
         setSelectedProperty(null);
     };
     
-    const handleSavePayments = (newLastPaidMonth: string | null) => {
-        if (!group || !selectedProperty) return;
-        const updatedProperties = group.properties.map(p => 
-          p.id === selectedProperty.id ? { ...p, lastPaidMonth: newLastPaidMonth } : p
-        );
-        updateFirestoreLocations({ ...group, properties: updatedProperties });
+    const handleSavePayments = async (newLastPaidMonth: string | null) => {
+        if (!selectedProperty) return;
+    
+        const userProfile = await getUserProfile();
+        if (!userProfile || !userProfile.locations) {
+            Alert.alert("Error", "Could not load user data to save payment. Please try again.");
+            return;
+        }
+    
+        const newLocations = userProfile.locations.map(loc => {
+            if (loc.id === groupId) {
+                const updatedProperties = loc.properties.map(p =>
+                    p.id === selectedProperty.id ? { ...p, lastPaidMonth: newLastPaidMonth } : p
+                );
+                return { ...loc, properties: updatedProperties };
+            }
+            return loc;
+        });
+    
+        await updateUserLocations(newLocations);
     };
 
     const openPropertyModal = useCallback((property: Property | null) => {
@@ -283,7 +316,9 @@ export default function GroupDetailScreen() {
                     <Ionicons name="arrow-back" size={28} color={textColor} />
                 </TouchableOpacity>
                 <ThemedText type="title" style={{ flex: 1, textAlign: 'center' }}>{group ? group.name : ''}</ThemedText>
-                <View style={{width: 28}} />
+                <TouchableOpacity onPress={() => generateLocationPdf(group.properties, group.name, setIsPdfLoading)} disabled={isPdfLoading || !group}>
+                    {isPdfLoading ? <ActivityIndicator size="small" color={primaryColor} /> : <Ionicons name="download-outline" size={24} color={primaryColor} />}
+                </TouchableOpacity>
             </View>
           <SectionList
             sections={sections}

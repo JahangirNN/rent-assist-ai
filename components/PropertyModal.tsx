@@ -70,16 +70,21 @@ export default function PropertyModal({ isVisible, onClose, onSave, property, on
         return;
     }
 
-    onSave({
-      id: property ? property.id : Date.now().toString(),
-      ...formData,
-      rentAmount: parseFloat(formData.rentAmount),
-      maintenanceFee: formData.maintenanceFee ? parseFloat(formData.maintenanceFee) : null,
-      otherFees: formData.otherFees ? parseFloat(formData.otherFees) : null,
-      deposit: formData.deposit ? parseFloat(formData.deposit) : null,
-      createdAt: property ? property.createdAt : new Date().toISOString(),
-      lastPaidMonth: property ? property.lastPaidMonth : null,
-    });
+    const newPropertyData = {
+        ...property,
+        id: property ? property.id : Date.now().toString(),
+        name: formData.name,
+        tenantName: formData.tenantName,
+        rentAmount: parseFloat(formData.rentAmount) || 0,
+        tenantMobile: formData.tenantMobile,
+        maintenanceFee: parseFloat(formData.maintenanceFee) || 0,
+        otherFees: parseFloat(formData.otherFees) || 0,
+        deposit: parseFloat(formData.deposit) || 0,
+        createdAt: property ? property.createdAt : new Date().toISOString(),
+        lastPaidMonth: property ? property.lastPaidMonth : null,
+    };
+    
+    onSave(newPropertyData);
     onClose();
   };
 

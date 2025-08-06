@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState, useMemo, useEffect } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, View, Pressable, Linking, Alert } from 'react-native';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -16,6 +15,7 @@ import { generateAndSharePdf } from '@/utils/pdfGenerator';
 export default function ExploreScreen() {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
   const cardColor = useThemeColor({}, 'card');
   const mutedColor = useThemeColor({light: '#F3F4F6', dark: '#374151'});
   const primaryColor = useThemeColor({}, 'primary');
@@ -131,8 +131,8 @@ export default function ExploreScreen() {
     <ThemedView style={styles.container}>
         <View style={styles.header}>
             <ThemedText type="title" style={styles.title}>{t('dashboard')}</ThemedText>
-            <Pressable onPress={() => generateAndSharePdf(allProperties)}>
-                <Ionicons name="download-outline" size={24} color={primaryColor} />
+            <Pressable onPress={() => generateAndSharePdf(allProperties, setIsPdfLoading)} disabled={isPdfLoading}>
+                {isPdfLoading ? <ActivityIndicator size="small" color={primaryColor} /> : <Ionicons name="download-outline" size={24} color={primaryColor} />}
             </Pressable>
         </View>
 

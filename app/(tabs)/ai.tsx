@@ -219,9 +219,9 @@ export default function AiAssistantScreen() {
     const model = useMemo(() => {
         if (!genAI) return null;
         return genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-lite", // Strictly maintaining gemini-2.0-flash
+            model: "gemini-2.0-flash", // Strictly maintaining gemini-2.0-flash
             generationConfig: {
-                temperature: 0.5,
+                temperature: 0.1,
             }
         });
     }, [genAI]);
