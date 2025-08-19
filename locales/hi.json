@@ -92,6 +92,7 @@
     "no_collections_this_month": "इस महीने कोई संग्रह दर्ज नहीं किया गया है।",
     "potential": "Expected",
     "last_month_summary_for": "{{month}} के लिए सारांश",
+    "monthly_summary_for": "{{month}} {{year}} के लिए सारांश",
     "total_remaining": "शेष",
     "maintenance_fee_optional": "रखरखाव शुल्क (वैकल्पिक)",
     "other_fees_optional": "अन्य शुल्क (वैकल्पिक)",

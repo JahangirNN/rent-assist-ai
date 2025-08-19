@@ -92,6 +92,7 @@
     "no_collections_this_month": "આ મહિને કોઈ સંગ્રહ નોંધાયેલ નથી.",
     "potential": "Expected",
     "last_month_summary_for": "{{month}} માટે સારાંશ",
+    "monthly_summary_for": "{{month}} {{year}} માટે સારાંશ",
     "total_remaining": "બાકી",
     "maintenance_fee_optional": "જાળવણી ફી (વૈકલ્પિક)",
     "other_fees_optional": "અન્ય ફી (વૈકલ્પિક)",

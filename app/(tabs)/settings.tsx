@@ -10,12 +10,17 @@ import { useThemeColor } from '@/hooks/useThemeColor';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/firebase/config';
-import { getMonthlySummary } from '@/utils/paymentCalculations';
+import { getMonthlySummary, getTotalDues } from '@/utils/paymentCalculations';
 
 export default function SettingsScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [locations, setLocations] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [selectedMonth, setSelectedMonth] = useState(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d;
+    });
     const colorScheme = useColorScheme();
     const router = useRouter();
     const cardColor = useThemeColor({}, 'card');
@@ -46,7 +51,14 @@ export default function SettingsScreen() {
 
     const financialSummary = useMemo(() => {
         const allProperties = locations.flatMap(group => group.properties);
-        return getMonthlySummary(allProperties);
+        const year = selectedMonth.getFullYear();
+        const month = selectedMonth.getMonth() + 1;
+        return getMonthlySummary(allProperties, year, month);
+    }, [locations, selectedMonth]);
+
+    const totalDuesSummary = useMemo(() => {
+        const allProperties = locations.flatMap(group => group.properties);
+        return getTotalDues(allProperties);
     }, [locations]);
 
     const languages = [
@@ -64,14 +76,19 @@ export default function SettingsScreen() {
 
     const currentLanguageName = languages.find(lang => lang.code === (t('language') === 'Language' ? 'en' : t('language') === 'ભાષા' ? 'gu' : 'hi'))?.name || 'English';
 
-    const lastMonthName = useMemo(() => {
-        if (!financialSummary.lastMonthString) return '';
-        const [year, month] = financialSummary.lastMonthString.split('-');
-        const monthIndex = parseInt(month, 10) - 1;
+    const changeMonth = (increment) => {
+        setSelectedMonth(prevMonth => {
+            const newMonth = new Date(prevMonth);
+            newMonth.setMonth(newMonth.getMonth() + increment);
+            return newMonth;
+        });
+    };
+
+    const selectedMonthName = useMemo(() => {
+        const monthIndex = selectedMonth.getMonth();
         const monthNameKey = Object.keys(t('months'))[monthIndex];
         return t(`months.${monthNameKey}`);
-    }, [financialSummary.lastMonthString]);
-
+    }, [selectedMonth, t]);
 
     if (loading) {
         return (
@@ -85,7 +102,6 @@ export default function SettingsScreen() {
         <ThemedView style={styles.container}>
             <ThemedText type="title" style={styles.title}>{t('settings')}</ThemedText>
             
-            {/* Language Selection Card */}
             <View style={[styles.card, { backgroundColor: cardColor }]}>
                 <ThemedText type="subtitle" style={styles.cardTitle}>{t('language')}</ThemedText>
                 <Pressable style={[styles.pickerButton, { backgroundColor: mutedColor }]} onPress={() => setModalVisible(true)}>
@@ -94,7 +110,6 @@ export default function SettingsScreen() {
                 </Pressable>
             </View>
 
-            {/* Language Selection Modal */}
             <Modal
                 transparent={true}
                 animationType="slide"
@@ -117,11 +132,20 @@ export default function SettingsScreen() {
                 </Pressable>
             </Modal>
             
-            {/* Monthly Collections Summary */}
             <ThemedText type="subtitle" style={styles.sectionHeader}>{t('monthly_collections')}</ThemedText>
+
+            <View style={[styles.monthSelector, { backgroundColor: cardColor }]}>
+                <TouchableOpacity onPress={() => changeMonth(-1)}>
+                    <Ionicons name="chevron-back-outline" size={24} color={Colors[colorScheme ?? 'light'].text} />
+                </TouchableOpacity>
+                <ThemedText style={styles.monthText}>{`${selectedMonthName} ${selectedMonth.getFullYear()}`}</ThemedText>
+                <TouchableOpacity onPress={() => changeMonth(1)}>
+                    <Ionicons name="chevron-forward-outline" size={24} color={Colors[colorScheme ?? 'light'].text} />
+                </TouchableOpacity>
+            </View>
             
             <View style={[styles.summaryCard, {backgroundColor: cardColor}]}>
-                <ThemedText type="title" style={styles.summaryTitle}>{t('last_month_summary_for', { month: lastMonthName })}</ThemedText>
+                {/* <ThemedText type="title" style={styles.summaryTitle}>{t('monthly_summary_for', { month: selectedMonthName, year: selectedMonth.getFullYear() })}</ThemedText> */}
                 
                 <View style={[styles.summaryMetricRow, {borderColor: mutedColor}]}>
                     <ThemedText style={styles.summaryMetricLabel}>{t('total_potential')}</ThemedText>
@@ -137,7 +161,14 @@ export default function SettingsScreen() {
                     <ThemedText style={styles.summaryMetricLabel}>{t('total_remaining')}</ThemedText>
                     <ThemedText style={[styles.summaryMetricValue, {color: dangerColor}]}>₹{financialSummary.totalRemaining.toFixed(2)}</ThemedText>
                 </View>
+            </View>
 
+            <View style={[styles.summaryCardSmall, {backgroundColor: cardColor}]}>
+                {/* <ThemedText type="title" style={styles.summaryTitle}>Dues until {totalDuesSummary.previousMonthName}</ThemedText> */}
+                <View style={[styles.summaryMetricRow, {borderBottomWidth: 0, borderColor: mutedColor, }]}>
+                    <ThemedText style={styles.summaryTitle}>Dues until {totalDuesSummary.previousMonthName}</ThemedText>
+                    <ThemedText style={[styles.summaryMetricValue, {color: dangerColor, fontSize:15}]}>₹{totalDuesSummary.totalDues.toFixed(2)}</ThemedText>
+                </View>
             </View>
         </ThemedView>
     );
@@ -212,21 +243,46 @@ const styles = StyleSheet.create({
         marginBottom: 15,
         marginTop: 10,
     },
-    // --- Refined Summary Card Styles ---
+    monthSelector: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 15,
+        borderRadius: 15,
+        borderBottomEndRadius:0,
+        borderBottomStartRadius:0
+        // marginBottom: 20,
+    },
+    monthText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
     summaryCard: {
         padding: 20,
         borderRadius: 15,
-        marginBottom: 20,
+        marginBottom: 5,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
-        elevation: 3,
+        // elevation: 3,
+        borderEndStartRadius:0,
+        borderStartStartRadius:0
+    },
+    summaryCardSmall: {
+        padding: 20,
+        borderRadius: 15,
+        marginBottom: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        // elevation: 3,
     },
     summaryTitle: {
-        fontSize: 20,
+        fontSize: 14,
         fontWeight: 'bold',
-        marginBottom: 15,
+        marginBottom: 5,
         textAlign: 'center',
     },
     summaryMetricRow: {
@@ -243,53 +299,5 @@ const styles = StyleSheet.create({
     summaryMetricValue: {
         fontSize: 18,
         fontWeight: 'bold',
-    },
-    // --- End Refined Summary Card Styles ---
-    groupCard: {
-        padding: 15,
-        borderRadius: 15,
-        marginBottom: 15,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    groupHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingBottom: 10,
-        marginBottom: 10,
-        borderBottomWidth: 1,
-        borderColor: '#E5E7EB',
-    },
-    groupName: {
-        fontWeight: 'bold',
-        fontSize: 18,
-    },
-    groupTotal: {
-        fontWeight: 'bold',
-        fontSize: 18,
-    },
-    propertyItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-        paddingHorizontal: 5,
-    },
-    propertyName: {
-        fontSize: 16,
-    },
-    propertyAmount: {
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    separator: {
-        height: 1,
-    },
-    emptyContainer: {
-        marginTop: 40,
-        alignItems: 'center',
-        justifyContent: 'center'
     },
 });

@@ -96,10 +96,8 @@ export function getPaymentStatus(property: Property) {
     };
 }
 
-export function getMonthlySummary(properties: Property[]) {
-    const today = getIndianStandardTime();
-    const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const lastMonthString = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+export function getMonthlySummary(properties: Property[], year: number, month: number) {
+    const targetMonthString = `${year}-${String(month).padStart(2, '0')}`;
 
     let totalRent = 0;
     let totalCollected = 0;
@@ -108,7 +106,9 @@ export function getMonthlySummary(properties: Property[]) {
         const netRent = (property.rentAmount || 0) - (property.maintenanceFee || 0) - (property.otherFees || 0);
         totalRent += netRent;
 
-        if (property.lastPaidMonth && property.lastPaidMonth >= lastMonthString) {
+        // A month is considered collected if the property's last paid month
+        // is the same as or later than the month we are summarizing.
+        if (property.lastPaidMonth && property.lastPaidMonth >= targetMonthString) {
             totalCollected += netRent;
         }
     }
@@ -119,6 +119,30 @@ export function getMonthlySummary(properties: Property[]) {
         totalRent,
         totalCollected,
         totalRemaining,
-        lastMonthString,
+    };
+}
+
+export function getTotalDues(properties: Property[]) {
+    let totalDues = 0;
+
+    const today = getIndianStandardTime();
+    const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const monthNames = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const previousMonthName = monthNames[prevMonthDate.getMonth()];
+
+
+    for (const property of properties) {
+        const { overdueMonthsCount } = getPaymentStatus(property);
+        if(overdueMonthsCount > 0) {
+             const netRent = (property.rentAmount || 0) - (property.maintenanceFee || 0) - (property.otherFees || 0);
+             totalDues += overdueMonthsCount * netRent;
+        }
+    }
+
+    return {
+        totalDues,
+        previousMonthName
     };
 }
